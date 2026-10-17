@@ -1,0 +1,40 @@
+.sheet-title {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+}
+
+.name-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+#trail-entry {
+  margin-top: 0;
+}
+
+.sheet-helper {
+  margin: 0 0 0.25rem;
+  font-size: 0.92rem;
+  line-height: 1.45;
+  color: var(--muted);
+}
+
+.field-label {
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.name-entry input {
+  width: 100%;
+  min-height: 2.85rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--ink);
+  font: inherit;
+}

@@ -1,4 +1,20 @@
+# Secrets and keys
 .env
+.env.*
+*.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision
+credentials.json
+secrets.json
+GoogleService-Info.plist
+google-services.json
+
+# Private plans. The public repository is the code.
+docs/
+
+# Local data and environments
 .venv
 __pycache__/
 *.pyc

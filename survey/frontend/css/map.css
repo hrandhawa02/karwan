@@ -1,0 +1,302 @@
+.map-regions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.region-chip {
+  padding: 0.35rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  font-weight: 550;
+  cursor: pointer;
+}
+
+.region-chip:active {
+  background: var(--tint);
+  border-color: var(--green);
+}
+
+.map-search {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.map-search input {
+  flex: 1;
+  min-width: 0;
+  min-height: 2.9rem;
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.96rem;
+}
+
+.map-search button,
+.secondary {
+  min-height: 2.9rem;
+  padding: 0.55rem 0.9rem;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.96rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.map-status,
+.map-note {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.map-note {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.map-note.is-warn,
+.map-status.is-warn {
+  margin-bottom: 0.65rem;
+  padding: 0.55rem 0.7rem;
+  border-radius: 12px;
+  background: #f8f1e3;
+  color: var(--ink);
+}
+
+.banner-mark {
+  flex: 0 0 auto;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-top: 0.12rem;
+}
+
+.is-wait .banner-mark {
+  border: 2px solid var(--line);
+  border-top-color: var(--green);
+  border-radius: 50%;
+  animation: banner-spin 0.7s linear infinite;
+}
+
+.is-warn .banner-mark {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e7d3a4;
+  color: #6e4a10;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.is-warn .banner-mark::before {
+  content: "!";
+}
+
+@keyframes banner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.map-frame {
+  position: relative;
+  width: 100%;
+  height: 17.5rem;
+  margin-bottom: 0.75rem;
+  border-radius: 18px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.map-canvas {
+  width: 100%;
+  height: 100%;
+  background: #d5ddd8;
+}
+
+.map-place .banner-mark {
+  margin-top: 0;
+}
+
+.map-place {
+  position: absolute;
+  z-index: 500;
+  top: 0.55rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  max-width: calc(100% - 5.5rem);
+  margin: 0;
+  padding: 0.28rem 0.7rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 1px 4px rgba(23, 33, 28, 0.22);
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 650;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.map-key {
+  position: absolute;
+  z-index: 500;
+  left: 0.55rem;
+  bottom: 0.55rem;
+  display: flex;
+  gap: 0.65rem;
+  padding: 0.3rem 0.55rem;
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(23, 33, 28, 0.22);
+}
+
+.key-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  color: var(--ink);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.key-item .mark {
+  width: 16px;
+  height: 16px;
+  display: block;
+}
+
+.pin-wrap {
+  background: transparent;
+  border: 0;
+}
+
+.pin-wrap .mark {
+  display: block;
+  width: 28px;
+  height: 28px;
+  filter: drop-shadow(0 1px 3px rgba(23, 33, 28, 0.35));
+}
+
+.pin-wrap .mark-drop {
+  width: 28px;
+  height: 34px;
+}
+
+.pin-wrap .mark-cluster {
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #ffffff;
+  border: 2.5px solid #ffffff;
+  display: grid;
+  place-items: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.drop-pin-btn {
+  width: 100%;
+  min-height: 2.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.98rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.drop-pin-btn.active {
+  background: var(--tint);
+  border-style: solid;
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.map-sheet {
+  margin-bottom: 0.35rem;
+  padding: 1rem 1.05rem 1.05rem;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--card);
+}
+
+.map-sheet.card-fade {
+  animation: cardIn 320ms ease;
+}
+
+#map-step,
+.name-step {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.name-step .name-entry + .name-entry {
+  margin-top: 1.15rem;
+}
+
+.step-in {
+  animation: stepIn 340ms ease;
+}
+
+.step-out {
+  animation: stepOut 160ms ease forwards;
+}
+
+@keyframes cardIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes stepIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes stepOut {
+  to {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}

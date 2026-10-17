@@ -1,0 +1,74 @@
+.thanks {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 1rem 0 0.5rem;
+}
+
+.thanks .copy + .copy {
+  margin-top: 0.85rem;
+}
+
+.done {
+  width: 4.25rem;
+  height: 4.25rem;
+  margin: 0 0 1.25rem;
+  border-radius: 50%;
+  background: var(--green);
+  display: grid;
+  place-items: center;
+}
+
+.done::after {
+  content: "";
+  width: 0.95rem;
+  height: 1.7rem;
+  margin-top: -0.25rem;
+  border: solid white;
+  border-width: 0 4px 4px 0;
+  transform: rotate(45deg);
+}
+
+.actions.stack {
+  flex-direction: column;
+  margin-top: auto;
+}
+
+.actions.stack .another {
+  width: 100%;
+  text-align: center;
+}
+
+.thanks-pair {
+  display: flex;
+  gap: 0.65rem;
+  width: 100%;
+}
+
+.actions.stack .thanks-pair .share,
+.actions.stack .thanks-pair .download {
+  flex: 1;
+  width: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  text-align: center;
+}
+
+.thanks-pair svg {
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: 0 0 auto;
+}
+
+.download,
+.share {
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--line);
+  font-weight: 600;
+}

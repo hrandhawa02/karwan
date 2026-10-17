@@ -1,0 +1,233 @@
+.at-start #screen {
+  flex: 1;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 1.5rem 1.25rem 1.25rem;
+}
+
+.at-start h1,
+.home h1,
+.announce h1,
+.brand,
+.name {
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+.at-start h1 {
+  margin-bottom: 1.75rem;
+  font-size: 2.45rem;
+  line-height: 1.05;
+}
+
+.legal-page h1 {
+  margin-bottom: 1.25rem;
+  font-size: 2rem;
+}
+
+.at-start .copy,
+.home .copy {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1.0625rem;
+  line-height: 1.55;
+  font-weight: 450;
+}
+
+.at-start .copy + .copy,
+.home .copy + .copy {
+  margin-top: 1rem;
+}
+
+.home #screen,
+.announce #screen {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 0.25rem 0 1.5rem;
+}
+
+.home #screen {
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  padding-top: 11vh;
+  padding-bottom: 0.5rem;
+}
+
+.home .home-top,
+.home .home-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+}
+
+.home .mark {
+  position: relative;
+  width: 5.6rem;
+  height: 5.2rem;
+  margin-bottom: 0.15rem;
+}
+
+.home .mark-k {
+  display: block;
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: 5.6rem;
+  font-weight: 560;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+
+.home .mark-peak {
+  position: absolute;
+  top: 0.05rem;
+  right: -0.35rem;
+  width: 1.7rem;
+  height: 1.5rem;
+}
+
+.home h1 {
+  margin-bottom: 1.85rem;
+  font-size: 2.65rem;
+  line-height: 1;
+}
+
+.home .tagline {
+  max-width: 16.5rem;
+  margin: 0;
+  font-size: 1.2rem;
+  line-height: 1.35;
+}
+
+.home .soon {
+  margin: 1.5rem 0 0;
+  color: var(--green);
+  font-size: 0.92rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.home .pair {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.65rem;
+  width: 100%;
+  margin-top: 0;
+}
+
+@media (min-width: 800px) {
+  .home main {
+    max-width: 40rem;
+  }
+
+  .home .mark {
+    width: 7rem;
+    height: 6.4rem;
+  }
+
+  .home .mark-k {
+    font-size: 7rem;
+  }
+
+  .home h1 {
+    font-size: 3.4rem;
+  }
+
+  .home .tagline {
+    max-width: 22rem;
+    font-size: 1.35rem;
+  }
+}
+
+.home .for-us {
+  margin: 1.35rem 0 0;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.home a.go {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: min(100%, 16rem);
+  min-height: 2.9rem;
+  padding: 0.65rem 1.05rem;
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  background: var(--green);
+  color: white;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.home a.go.quiet {
+  background: var(--card);
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+.announce h1 {
+  margin-bottom: 1.75rem;
+  font-size: 2.2rem;
+  line-height: 1.05;
+}
+
+.announce .when {
+  margin: 0 0 0.3rem;
+  color: var(--muted);
+  font-size: 0.84rem;
+}
+
+.announce h2 {
+  margin: 0 0 0.55rem;
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: 1.45rem;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+.announce article + article {
+  margin-top: 1.75rem;
+  padding-top: 1.75rem;
+  border-top: 1px solid var(--line);
+}
+
+.announce .more {
+  margin: 1.75rem 0 0;
+}
+
+.announce .more a {
+  color: var(--ink);
+  font-weight: 650;
+}
+
+.at-start .actions {
+  margin-top: auto;
+  position: static;
+  padding-top: 1.5rem;
+  background: none;
+}
+
+.legal {
+  margin: 1.15rem 0 0;
+  color: var(--muted);
+  font-size: 0.84rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.legal.settle {
+  margin-top: auto;
+  padding-top: 1.5rem;
+}
+
+.legal a {
+  color: var(--muted);
+}
