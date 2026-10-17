@@ -93,7 +93,7 @@ async function shareSurvey() {
   const button = document.getElementById("share");
   if (navigator.share) {
     try {
-      await navigator.share({ title: "Karwan", text: note, url });
+      await navigator.share({ title: "Karwan", text });
       return;
     } catch (error) {
       if (error.name === "AbortError") return;
