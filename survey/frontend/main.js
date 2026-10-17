@@ -88,11 +88,12 @@ async function saveVisit() {
 
 async function shareSurvey() {
   const url = `${location.origin}/survey/`;
-  const text = `Just got back from a trailhead? Leave Karwan a one-minute note on the parking. It tells the next hiker about the cars, the pay machine, and the bathrooms. ${url}`;
+  const note = "Just got back from a trailhead? Leave Karwan a one-minute note on the parking. It helps the next person plan: the cars, the pay machine, and the bathrooms.";
+  const text = `${note} ${url}`;
   const button = document.getElementById("share");
   if (navigator.share) {
     try {
-      await navigator.share({ title: "Karwan", text });
+      await navigator.share({ title: "Karwan", text: note, url });
       return;
     } catch (error) {
       if (error.name === "AbortError") return;
