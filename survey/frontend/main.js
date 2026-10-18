@@ -24,6 +24,8 @@ function draw(moveFocus) {
   const atStart = currentVisit.stepId === "start";
   const onMap = currentVisit.stepId === "map";
   document.body.classList.toggle("at-start", atStart);
+  document.body.classList.toggle("on-map-step", onMap);
+  if (!onMap) document.body.classList.remove("map-naming");
   trailheadLine.textContent = currentVisit.trailhead && !atStart && !onMap
     ? currentVisit.trailhead.name
     : "";
@@ -88,19 +90,21 @@ async function saveVisit() {
 
 async function shareSurvey() {
   const url = `${location.origin}/survey/`;
-  const note = "Just got back from a trailhead? Leave Karwan a one-minute note on the parking. It helps the next person plan: the cars, the pay machine, and the bathrooms.";
-  const text = `${note} ${url}`;
   const button = document.getElementById("share");
   if (navigator.share) {
     try {
-      await navigator.share({ title: "Karwan", text });
+      await navigator.share({
+        title: "Karwan",
+        text: "One-minute trailhead parking note.",
+        url,
+      });
       return;
     } catch (error) {
       if (error.name === "AbortError") return;
     }
   }
   try {
-    await navigator.clipboard.writeText(text);
+    await navigator.clipboard.writeText(url);
     if (button) button.textContent = "Link copied";
   } catch {
     if (button) button.textContent = "Copy the page address";

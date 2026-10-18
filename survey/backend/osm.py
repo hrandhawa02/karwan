@@ -6,6 +6,7 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 
 from survey.backend.database import connect
 
@@ -394,7 +395,7 @@ def search_nearby(text, lat, lon):
     dlon = 30 / (111 * max(math.cos(math.radians(lat)), 0.2))
     area = _box(lat - dlat, lon - dlon, lat + dlat, lon + dlon)
     query = f"""
-[out:json][timeout:15];
+[out:json][timeout:8];
 (
   node["highway"="trailhead"]["name"~"{safe}",i]{area};
   way["highway"="trailhead"]["name"~"{safe}",i]{area};
@@ -447,11 +448,11 @@ def search_trails(text, lat, lon):
     if cached is not None:
         return cached
     safe = re.sub(r"([.\\+*?\[\](){}|^$])", r"\\\1", query_text)
-    dlat = 120 / 111
-    dlon = 120 / (111 * max(math.cos(math.radians(lat)), 0.2))
+    dlat = 50 / 111
+    dlon = 50 / (111 * max(math.cos(math.radians(lat)), 0.2))
     area = _box(lat - dlat, lon - dlon, lat + dlat, lon + dlon)
     query = f"""
-[out:json][timeout:15];
+[out:json][timeout:8];
 (
   relation["route"="hiking"]["name"~"{safe}",i]{area};
   way["route"="hiking"]["name"~"{safe}",i]{area};
@@ -501,7 +502,7 @@ def find_places(text, lat, lon):
         "namedetails": "1",
         "limit": "8",
         "viewbox": viewbox,
-        "bounded": "0",
+        "bounded": "1",
     })
     try:
         payload = _get(url)
@@ -555,10 +556,27 @@ def search_map(text, lat, lon):
         return cached
     choices = []
     seen = set()
-    try:
-        pin_hits = search_nearby(query_text, lat, lon)
-    except MapLookupFailed:
-        pin_hits = []
+
+    def _pins():
+        try:
+            return search_nearby(query_text, lat, lon)
+        except MapLookupFailed:
+            return []
+
+    def _trails():
+        try:
+            return search_trails(query_text, lat, lon)
+        except MapLookupFailed:
+            return []
+
+    with ThreadPoolExecutor(max_workers=3) as pool:
+        pin_job = pool.submit(_pins)
+        trail_job = pool.submit(_trails)
+        place_job = pool.submit(find_places, query_text, lat, lon)
+        pin_hits = pin_job.result()
+        trail_hits = trail_job.result()
+        place_hits = place_job.result()
+
     for pin in pin_hits:
         _append_choice(choices, seen, {
             "kind": "pin",
@@ -568,13 +586,9 @@ def search_map(text, lat, lon):
             "lon": pin["lon"],
             "pin": pin,
         })
-    try:
-        trail_hits = search_trails(query_text, lat, lon)
-    except MapLookupFailed:
-        trail_hits = []
     for trail in trail_hits:
         _append_choice(choices, seen, trail)
-    for place in find_places(query_text, lat, lon):
+    for place in place_hits:
         _append_choice(choices, seen, place)
     payload = {"choices": choices}
     _remember(key, payload, WEEK)

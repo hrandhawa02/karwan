@@ -18,6 +18,8 @@
 
 html {
   background: var(--bg);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
 }
 
 body {
@@ -29,6 +31,12 @@ body {
   font-size: 1.0625rem;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+}
+
+@media (max-width: 28rem) {
+  body {
+    font-size: 1rem;
+  }
 }
 
 main {
@@ -46,4 +54,21 @@ main {
   display: flex;
   flex-direction: column;
   min-width: 0;
+}
+
+.on-map-step main {
+  max-width: 32rem;
+  min-height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  padding:
+    max(0.65rem, env(safe-area-inset-top))
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.5rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+}
+
+.on-map-step.map-naming main {
+  max-width: 32rem;
+  padding: max(1.25rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
 }

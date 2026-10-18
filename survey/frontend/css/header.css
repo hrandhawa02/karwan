@@ -45,8 +45,18 @@ a.brand:active,
   padding: 0.45rem 0.15rem;
 }
 
-.at-start main > .legal {
+.at-start main > .legal,
+.on-map-step main > .legal {
   display: none;
+}
+
+.on-map-step header {
+  flex-shrink: 0;
+  margin-bottom: 0.45rem;
+}
+
+.on-map-step.map-naming header {
+  margin-bottom: 1.25rem;
 }
 
 .trailhead-line:empty,
