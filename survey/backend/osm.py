@@ -17,7 +17,7 @@ ENDPOINTS = (
 )
 TIME_URL = "https://timeapi.io/api/timezone/coordinate"
 PLACE_URL = "https://nominatim.openstreetmap.org/search"
-NAME_OK = re.compile(r"[A-Za-z0-9][A-Za-z0-9 '&.,-]{1,40}$")
+NAME_OK = re.compile(r"[A-Za-z0-9][A-Za-z0-9 '&.,-]{1,58}$")
 TRAIL_LOT_RE = re.compile(
     r"\b(trail|trailhead|hike|hiking|park|falls|lake|peak|mount|mt|creek|river|"
     r"pass|sno-park|camp|campground|forest|recreation|overlook|viewpoint|gorge|"
@@ -417,6 +417,174 @@ out center tags 15;
             places.append(pin)
     _remember_many([(key, places), *_element_rows(elements)], WEEK)
     return places
+
+
+def _choice_key(choice):
+    return (
+        choice.get("kind"),
+        round(float(choice["lat"]), 3),
+        round(float(choice["lon"]), 3),
+        (choice.get("label") or "").casefold(),
+    )
+
+
+def _append_choice(choices, seen, choice):
+    if not choice:
+        return
+    key = _choice_key(choice)
+    if key in seen:
+        return
+    seen.add(key)
+    choices.append(choice)
+
+
+def search_trails(text, lat, lon):
+    query_text = text.strip()
+    if NAME_OK.fullmatch(query_text) is None:
+        return []
+    key = f"trail:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    cached = _recall(key)
+    if cached is not None:
+        return cached
+    safe = re.sub(r"([.\\+*?\[\](){}|^$])", r"\\\1", query_text)
+    dlat = 120 / 111
+    dlon = 120 / (111 * max(math.cos(math.radians(lat)), 0.2))
+    area = _box(lat - dlat, lon - dlon, lat + dlat, lon + dlon)
+    query = f"""
+[out:json][timeout:15];
+(
+  relation["route"="hiking"]["name"~"{safe}",i]{area};
+  way["route"="hiking"]["name"~"{safe}",i]{area};
+);
+out center tags 12;
+"""
+    try:
+        elements = _overpass(query)
+    except MapLookupFailed:
+        stale = _recall(key, allow_stale=True)
+        if stale is not None:
+            return stale
+        raise
+    trails = []
+    for element in elements:
+        tags = element.get("tags") or {}
+        name = _label(tags)
+        point = _point(element)
+        if not name or point is None:
+            continue
+        trails.append({
+            "kind": "trail",
+            "label": name,
+            "detail": "Hiking trail",
+            "lat": point[0],
+            "lon": point[1],
+        })
+    _remember(key, trails, WEEK)
+    return trails
+
+
+def find_places(text, lat, lon):
+    query = text.strip()
+    if len(query) < 2 or len(query) > 60:
+        return []
+    key = f"places:{query.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    cached = _recall(key)
+    if cached is not None:
+        return cached
+    dlat = 2.0
+    dlon = 2.5
+    viewbox = f"{lon - dlon},{lat - dlat},{lon + dlon},{lat + dlat}"
+    url = PLACE_URL + "?" + urllib.parse.urlencode({
+        "q": query,
+        "format": "jsonv2",
+        "addressdetails": "1",
+        "namedetails": "1",
+        "limit": "8",
+        "viewbox": viewbox,
+        "bounded": "0",
+    })
+    try:
+        payload = _get(url)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        log.warning("place lookup failed")
+        stale = _recall(key, allow_stale=True)
+        return stale if stale is not None else []
+    if not payload:
+        _remember(key, [], WEEK)
+        return []
+    skip = {"country", "continent", "state", "ocean", "sea"}
+    places = []
+    for hit in payload:
+        addresstype = (hit.get("addresstype") or hit.get("type") or "").lower()
+        if addresstype in skip:
+            continue
+        try:
+            hit_lat = float(hit["lat"])
+            hit_lon = float(hit["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        names = hit.get("namedetails") or {}
+        label = (
+            names.get("name:en")
+            or hit.get("name")
+            or (hit.get("display_name") or "").split(",")[0]
+            or query
+        ).strip()
+        parts = [part.strip() for part in (hit.get("display_name") or "").split(",")]
+        detail_parts = [part for part in parts[1:4] if part and part != label]
+        detail = ", ".join(detail_parts) if detail_parts else addresstype.replace("_", " ").title()
+        kind = "peak" if addresstype == "peak" or (hit.get("type") or "").lower() == "peak" else "place"
+        places.append({
+            "kind": kind,
+            "label": label,
+            "detail": detail,
+            "lat": hit_lat,
+            "lon": hit_lon,
+        })
+    _remember(key, places, WEEK)
+    return places
+
+
+def search_map(text, lat, lon):
+    query_text = text.strip()
+    if len(query_text) < 2:
+        return {"choices": []}
+    key = f"mapsearch:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    cached = _recall(key)
+    if cached is not None:
+        return cached
+    choices = []
+    seen = set()
+    try:
+        pin_hits = search_nearby(query_text, lat, lon)
+    except MapLookupFailed:
+        pin_hits = []
+    for pin in pin_hits:
+        _append_choice(choices, seen, {
+            "kind": "pin",
+            "label": pin["name"],
+            "detail": "Trailhead" if pin["kind"] == "trailhead" else "Parking",
+            "lat": pin["lat"],
+            "lon": pin["lon"],
+            "pin": pin,
+        })
+    try:
+        trail_hits = search_trails(query_text, lat, lon)
+    except MapLookupFailed:
+        trail_hits = []
+    for trail in trail_hits:
+        _append_choice(choices, seen, trail)
+    for place in find_places(query_text, lat, lon):
+        _append_choice(choices, seen, place)
+    payload = {"choices": choices}
+    _remember(key, payload, WEEK)
+    return payload
+
+
+def places_near(lat, lon, radius_km=14):
+    dlat = radius_km / 111
+    dlon = radius_km / (111 * max(math.cos(math.radians(lat)), 0.2))
+    return map_view(lat - dlat, lon - dlon, lat + dlat, lon + dlon)
 
 
 def find_town(text):

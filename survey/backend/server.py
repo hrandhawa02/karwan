@@ -13,9 +13,9 @@ from survey.backend.database import connect
 from survey.backend.form_gate import form_is_open
 from survey.backend.osm import (
     MapLookupFailed,
-    find_town,
     map_view,
-    search_nearby,
+    places_near,
+    search_map,
     store_place,
 )
 from survey.backend.trailhead import place_public, sample_row
@@ -158,11 +158,24 @@ def map_places(south: float, west: float, north: float, east: float):
 @app.get(f"{API_V1}/map/search")
 def map_search(q: str, lat: float, lon: float):
     try:
-        places = search_nearby(q, lat, lon)
+        return search_map(q, lat, lon)
     except MapLookupFailed:
-        places = []
-    moved = None if places else find_town(q)
-    return {"places": places, "moved": moved}
+        return {"choices": []}
+
+
+@app.get(f"{API_V1}/map/near")
+def map_near(lat: float, lon: float):
+    try:
+        payload = places_near(lat, lon)
+    except MapLookupFailed:
+        raise HTTPException(
+            status_code=503,
+            detail="Places could not be loaded.",
+        )
+    return {
+        "places": payload.get("places") or [],
+        "searching_near": payload.get("searching_near"),
+    }
 
 
 @app.post(f"{API_V1}/places")

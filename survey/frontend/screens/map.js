@@ -2,6 +2,9 @@ import { esc } from "../buttons.js";
 import { currentVisit } from "../current_visit.js";
 
 const DEFAULT_VIEW = { lat: 47.4881, lon: -121.7237, zoom: 13 };
+const SEARCH_MIN_ZOOM = 14;
+const SEARCH_WIDE_SPAN_LAT = 0.35;
+const SEARCH_WIDE_SPAN_LON = 0.45;
 const TILE_URL = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
 const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
 const REGIONS = [
@@ -25,6 +28,7 @@ let fromPin = false;
 let droppingMode = false;
 let loadToken = 0;
 let soughtLabel = "";
+let anchorTrailLabel = "";
 
 function pinKey(pin) {
   return `${pin.osm_type}:${pin.osm_id}`;
@@ -116,6 +120,198 @@ function searchMap(q, lat, lon) {
   return fetchJson(`/api/v1/map/search?${params.toString()}`);
 }
 
+function fetchNear(lat, lon) {
+  const params = new URLSearchParams({
+    lat: String(lat),
+    lon: String(lon),
+  });
+  return fetchJson(`/api/v1/map/near?${params.toString()}`);
+}
+
+function clearSearchChoices() {
+  const modal = document.getElementById("search-choices-modal");
+  const list = document.getElementById("search-choices-list");
+  if (!modal || !list) return;
+  modal.hidden = true;
+  modal.setAttribute("aria-hidden", "true");
+  list.replaceChildren();
+  document.body.classList.remove("search-modal-open");
+}
+
+function showSearchChoices(choices) {
+  const modal = document.getElementById("search-choices-modal");
+  const list = document.getElementById("search-choices-list");
+  if (!modal || !list) return;
+  list.replaceChildren();
+  list.setAttribute("role", "listbox");
+  for (const choice of choices) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "search-choice";
+    btn.setAttribute("role", "option");
+    const primary = document.createElement("span");
+    primary.className = "search-choice-label";
+    primary.textContent = choice.label;
+    btn.append(primary);
+    if (choice.detail) {
+      const detail = document.createElement("span");
+      detail.className = "search-choice-detail";
+      detail.textContent = choice.detail;
+      btn.append(detail);
+    }
+    btn.addEventListener("click", () => {
+      applySearchChoice(choice);
+    });
+    list.append(btn);
+  }
+  modal.hidden = false;
+  modal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("search-modal-open");
+  list.querySelector(".search-choice")?.focus();
+}
+
+function anchorMapNote(hasPins) {
+  const where = soughtLabel ? `For ${soughtLabel}, ` : "";
+  if (hasPins) {
+    return `${where}zoom if you need to, then tap the blue P where you parked. Green icons mark trailheads nearby.`;
+  }
+  return `${where}no blue P here yet. Zoom and pan to the lot, or tap below to drop a pin on the map.`;
+}
+
+function emptyViewNote() {
+  const where = soughtLabel ? `For ${soughtLabel}, ` : "";
+  return `${where}no blue P in this view. Pinch to zoom in, pan to the lot, or tap below to drop a pin.`;
+}
+
+function zoomedOutNote() {
+  const where = soughtLabel ? `${soughtLabel} is centered. ` : "";
+  return `${where}Pinch to zoom in until blue parking icons appear, then tap the P for your lot.`;
+}
+
+function zoomedOutCachedNote() {
+  return "Pinch to zoom in for more lots nearby. Blue P is parking; green marks trailheads.";
+}
+
+function userMarkedSpot() {
+  return Boolean(dropped) || chosen?.mode === "name" || hasLotSelection();
+}
+
+function placedPinNote() {
+  const trail = chosen?.trailName;
+  if (trail) {
+    return `Does this look right for ${trail}? Drag the pin if you need to move it, then tap Continue.`;
+  }
+  return "Does this look right? Drag the pin if you need to move it, then tap Continue.";
+}
+
+function showPlacedPinBanner() {
+  setBanner("map-note", placedPinNote(), "is-ok");
+}
+
+function lotConfirmNote(state) {
+  if (!state?.pin) {
+    return "Tap Continue if this is the right lot.";
+  }
+  const name = state.pin.name || "this lot";
+  if (state.mode === "unnamed") {
+    return "This lot has no name on the map. Tap Continue to label it, or tap another blue P.";
+  }
+  if (state.askTrail) {
+    return `Tap Continue if you parked at ${name}. You'll pick the trail next.`;
+  }
+  return `Does this look right? Tap Continue if you parked at ${name}, or choose another blue P.`;
+}
+
+function showLotConfirmBanner(state) {
+  setBanner("map-note", lotConfirmNote(state), "is-ok");
+}
+
+function hasLotSelection() {
+  return Boolean(
+    chosen && ["pin", "unnamed", "pick-lot", "trailhead"].includes(chosen.mode),
+  );
+}
+
+function frameSearchArea(choice, near) {
+  if (!map) return;
+  const anchorZoom = choice.kind === "place" ? SEARCH_MIN_ZOOM : 15;
+  if (near.length === 0) {
+    map.setView([choice.lat, choice.lon], anchorZoom);
+    return;
+  }
+  const bounds = window.L.latLngBounds([
+    [choice.lat, choice.lon],
+    ...near.map((pin) => [pin.lat, pin.lon]),
+  ]);
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const spanLat = ne.lat - sw.lat;
+  const spanLon = ne.lng - sw.lng;
+  const spread =
+    near.length > 12
+    || spanLat > SEARCH_WIDE_SPAN_LAT
+    || spanLon > SEARCH_WIDE_SPAN_LON;
+  if (spread) {
+    map.setView([choice.lat, choice.lon], anchorZoom);
+    return;
+  }
+  map.fitBounds(bounds, {
+    padding: [36, 36],
+    maxZoom: 16,
+    minZoom: SEARCH_MIN_ZOOM,
+  });
+}
+
+async function applySearchChoice(choice) {
+  if (!map || !choice) return;
+  clearSearchChoices();
+  setBanner("searching-near", "");
+  if (choice.kind === "pin" && choice.pin) {
+    loadToken++;
+    soughtLabel = "";
+    anchorTrailLabel = "";
+    setBanner("map-note", "");
+    map.setView([choice.lat, choice.lon], 16);
+    drawPins(mergePins([choice.pin]));
+    selectPin(choice.pin);
+    return;
+  }
+  if (choice.kind === "trail") {
+    anchorTrailLabel = choice.label;
+  } else {
+    anchorTrailLabel = "";
+  }
+  const token = ++loadToken;
+  clearSelection();
+  soughtLabel = choice.label;
+  setBanner("map-note", "");
+  setBanner("searching-near", "Looking nearby", "is-wait");
+  try {
+    const payload = await fetchNear(choice.lat, choice.lon);
+    if (token !== loadToken) return;
+    soughtLabel = choice.label;
+    const near = payload.places || [];
+    if (near.length > 0) {
+      mergePins(near);
+      frameSearchArea(choice, near);
+      drawPins(mergePins([]));
+      setBanner("searching-near", payload.searching_near ? `Near ${payload.searching_near}` : "This area");
+      setBanner("map-note", anchorMapNote(true));
+    } else {
+      frameSearchArea(choice, []);
+      await loadPins(true);
+      const hasPins = loaded.length > 0;
+      setBanner("map-note", anchorMapNote(hasPins), hasPins ? null : "is-warn");
+    }
+  } catch (_err) {
+    setBanner("searching-near", "");
+    frameSearchArea(choice, []);
+    await loadPins(true);
+    const hasPins = loaded.length > 0;
+    setBanner("map-note", anchorMapNote(hasPins), hasPins ? null : "is-warn");
+  }
+}
+
 function savePlace(body) {
   return fetchJson("/api/v1/places", {
     method: "POST",
@@ -149,7 +345,7 @@ function clearSelection() {
 function setBanner(id, text, kind) {
   const el = document.getElementById(id);
   if (!el) return;
-  el.classList.remove("is-wait", "is-warn");
+  el.classList.remove("is-wait", "is-warn", "is-ok");
   el.replaceChildren();
   if (!text) {
     el.hidden = true;
@@ -166,11 +362,6 @@ function setBanner(id, text, kind) {
   el.append(document.createTextNode(text));
 }
 
-function emptyViewNote() {
-  const found = soughtLabel ? `${soughtLabel} is on the map. ` : "";
-  return `${found}No trailhead or parking lot in this view. Zoom out for the area around it, or drop a pin where you parked.`;
-}
-
 function setContinue(enabled) {
   const button = document.getElementById("map-next");
   if (button) button.disabled = !enabled;
@@ -183,13 +374,25 @@ function setNameReady(enabled) {
 
 function syncDropButton() {
   const btn = document.getElementById("drop-pin-btn");
+  const card = document.getElementById("map-sheet");
+  const frame = document.querySelector(".map-frame");
   if (!btn) return;
   if (droppingMode) {
-    btn.textContent = "Cancel";
+    btn.textContent = "Cancel — don’t drop a pin";
     btn.classList.add("active");
+    card?.classList.add("map-sheet-dropping");
+    frame?.classList.add("map-dropping");
+    if (map?.dragging) {
+      map.dragging.disable();
+    }
   } else {
-    btn.textContent = "Drop a pin";
+    btn.textContent = "Can’t find the lot? Tap here to drop a pin";
     btn.classList.remove("active");
+    card?.classList.remove("map-sheet-dropping");
+    frame?.classList.remove("map-dropping");
+    if (map?.dragging) {
+      map.dragging.enable();
+    }
   }
 }
 
@@ -206,38 +409,53 @@ function sheet(state) {
   const sub = document.getElementById("sheet-sub");
   if (!title || !sub) return;
   fadeCard();
-  let heading = "Tap where you parked";
-  let note = "";
+  let heading = "Pick where you parked";
+  let note = "Zoom in if you need to. Tap the blue P where you left the car. Green marks the trailhead, not parking.";
   let enabled = false;
   if (state?.mode === "pick-lot") {
     heading = state.pin.name || "Trailhead";
-    note = "Tap the blue P for the lot.";
+    note = "More than one lot is nearby. Tap the blue P you parked in.";
   } else if (state?.mode === "trailhead") {
     heading = state.pin.name || "Trailhead";
-    note = "Drop a pin on your spot.";
+    note = "That’s the trailhead (green). Tap the blue P for your lot, or drop a pin below.";
   } else if (state?.mode === "pin") {
     heading = state.pin.name;
-    note = state.askTrail
-      ? "No trail is tied to this lot yet."
-      : (state.trailName && !state.pin.name.toLowerCase().includes(state.trailName.toLowerCase().replace(/\s+trailhead$/i, ""))
-        ? `Near ${state.trailName}`
-        : "");
+    note = "";
     enabled = true;
   } else if (state?.mode === "unnamed") {
     heading = state.trailName ? `Lot near ${state.trailName}` : "Unnamed parking lot";
-    note = "No name yet.";
+    note = "";
     enabled = true;
-  } else if (state) {
-    heading = "Pin dropped";
-    note = state.trailName
-      ? `Near ${state.trailName}. Drag the pin if the spot is off.`
-      : "Drag the pin if the spot is off.";
+  } else if (state?.mode === "name") {
+    heading = "";
+    note = "";
     enabled = true;
+  } else if (droppingMode) {
+    heading = "Drop a pin on the lot";
+    note = "Zoom in, then tap the map where you parked. Cancel below when you’re done.";
   }
+  const card = document.getElementById("map-sheet");
   title.textContent = heading;
   sub.textContent = note;
   sub.hidden = !note;
+  title.hidden = !heading;
+  const lotPicked = state?.mode === "pin" || state?.mode === "unnamed";
+  if (card) {
+    card.classList.toggle("map-sheet-compact", state?.mode === "name");
+    card.classList.toggle("map-sheet-lot", lotPicked);
+  }
+  const pinBtn = document.getElementById("drop-pin-btn");
+  if (pinBtn) {
+    pinBtn.hidden = enabled;
+  }
   setContinue(enabled);
+  if (state?.mode === "name") {
+    showPlacedPinBanner();
+  } else if (lotPicked) {
+    showLotConfirmBanner(state);
+  } else if (!state && !droppingMode) {
+    setBanner("map-note", "");
+  }
 }
 
 function showNameStep() {
@@ -384,7 +602,13 @@ function selectPin(pin) {
   setBanner("map-note", "");
   focusOn(pin);
 
-  const trailName = knownTrail(pin.lat, pin.lon, pin);
+  let trailName = knownTrail(pin.lat, pin.lon, pin);
+  let askTrailOverride = null;
+  if (anchorTrailLabel) {
+    trailName = anchorTrailLabel;
+    askTrailOverride = false;
+    anchorTrailLabel = "";
+  }
   if (pin.kind === "trailhead") {
     chosen = nearbyLots(pin).length > 0
       ? { mode: "pick-lot", pin, trailName }
@@ -392,9 +616,9 @@ function selectPin(pin) {
     sheet(chosen);
     return;
   }
-  const askTrail = !trailName;
+  const askTrail = askTrailOverride !== null ? askTrailOverride : !trailName;
   if (pin.named) {
-    chosen = { mode: "pin", pin, trailName, askTrail, trailTyped: "" };
+    chosen = { mode: "pin", pin, trailName, askTrail, trailTyped: trailName && !askTrail ? trailName : "" };
     sheet(chosen);
     return;
   }
@@ -545,10 +769,25 @@ async function loadPins(keepNote = false) {
     });
     if (token !== loadToken) return;
     if (payload.zoomed_out) {
-      clearPins();
       setBanner("searching-near", "");
-      const found = soughtLabel ? `${soughtLabel} is on the map. ` : "";
-      setBanner("map-note", `${found}Zoom in to see trailheads and parking lots.`, "is-warn");
+      if (knownPins.size > 0) {
+        drawPins(mergePins([]));
+      } else {
+        clearPins();
+      }
+      if (!keepNote) {
+        if (userMarkedSpot()) {
+          if (chosen?.mode === "name") {
+            showPlacedPinBanner();
+          } else if (hasLotSelection()) {
+            showLotConfirmBanner(chosen);
+          }
+        } else if (knownPins.size > 0) {
+          setBanner("map-note", zoomedOutCachedNote(), "is-warn");
+        } else {
+          setBanner("map-note", zoomedOutNote(), "is-warn");
+        }
+      }
       return;
     }
     if (!keepNote) {
@@ -558,7 +797,15 @@ async function loadPins(keepNote = false) {
     drawPins(merged);
     if (merged.length === 0) {
       setBanner("searching-near", "");
-      setBanner("map-note", emptyViewNote(), "is-warn");
+      if (userMarkedSpot()) {
+        if (chosen?.mode === "name") {
+          showPlacedPinBanner();
+        } else if (hasLotSelection()) {
+          showLotConfirmBanner(chosen);
+        }
+      } else {
+        setBanner("map-note", emptyViewNote(), "is-warn");
+      }
     } else if (payload.searching_near) {
       setBanner("searching-near", `Near ${payload.searching_near}`);
     } else {
@@ -609,15 +856,21 @@ function dropAt(lat, lon) {
       sheet(chosen);
     }
   });
-  const trailName = knownTrail(lat, lon, null);
+  let trailName = knownTrail(lat, lon, null);
+  let askTrail = !trailName;
+  if (anchorTrailLabel) {
+    trailName = anchorTrailLabel;
+    askTrail = false;
+    anchorTrailLabel = "";
+  }
   chosen = {
     mode: "name",
     lat,
     lon,
     typed: "",
     trailName,
-    askTrail: !trailName,
-    trailTyped: "",
+    askTrail,
+    trailTyped: trailName && !askTrail ? trailName : "",
   };
   sheet(chosen);
   document.getElementById("place-name")?.focus();
@@ -643,12 +896,16 @@ async function search() {
   const text = input.value.trim();
   if (text.length < 2 || !map) return;
 
+  clearSearchChoices();
+
   const coordMatch = COORD_RE.exec(text);
   if (coordMatch) {
     const lat = Number(coordMatch[1]);
     const lon = Number(coordMatch[2]);
     if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
       loadToken++;
+      soughtLabel = "";
+      anchorTrailLabel = "";
       setBanner("map-note", "");
       map.setView([lat, lon], 16);
       await loadPins(true);
@@ -661,37 +918,28 @@ async function search() {
   setBanner("searching-near", "Searching", "is-wait");
   try {
     const payload = await searchMap(text, center.lat, center.lng);
-    if (payload.places.length > 0) {
-      loadToken++;
-      soughtLabel = "";
-      setBanner("map-note", "");
-      const first = payload.places[0];
-      map.setView([first.lat, first.lon], 16);
-      drawPins(mergePins(payload.places));
-      selectPin(first);
-      return;
-    }
-    if (payload.moved) {
-      loadToken++;
-      clearSelection();
-      soughtLabel = payload.moved.label;
-      setBanner("map-note", "");
-      map.setView([payload.moved.lat, payload.moved.lon], 13);
-      await loadPins(true);
-      return;
-    }
-    soughtLabel = "";
+    const choices = payload.choices || [];
     setBanner("searching-near", "");
-    setBanner(
-      "map-note",
-      `No place named "${text}" from here. Try the town nearby, or lat, lon such as 47.488, -121.724.`,
-      "is-warn",
-    );
+    if (choices.length === 0) {
+      soughtLabel = "";
+      setBanner(
+        "map-note",
+        `Nothing matched "${text}" from here. Try a town, a shorter name, coordinates (47.488, -121.724), or Drop a pin on the lot.`,
+        "is-warn",
+      );
+      return;
+    }
+    if (choices.length === 1) {
+      await applySearchChoice(choices[0]);
+      return;
+    }
+    setBanner("map-note", "");
+    showSearchChoices(choices);
   } catch (_err) {
     setBanner("searching-near", "");
     setBanner(
       "map-note",
-      "Search is taking a moment. You can pan the map, or enter lat, lon, to mark the spot.",
+      "Search is slow right now. Pan the map to your lot, use Drop a pin, or enter lat, lon above.",
       "is-warn",
     );
   }
@@ -743,7 +991,7 @@ export function render() {
     <h1>Where did you park?</h1>
     <div class="map-regions" aria-label="Popular areas">${chips}</div>
     <div class="map-search">
-      <input id="search-input" type="search" placeholder="Trail, town, or 47.488, -121.724" autocomplete="off">
+      <input id="search-input" type="search" placeholder="Trail, peak, town, or 47.488, -121.724" autocomplete="off">
       <button type="button" id="search-button" class="secondary">Find</button>
     </div>
     <p id="map-note" class="map-note" hidden></p>
@@ -755,14 +1003,24 @@ export function render() {
         <span class="key-item">${markHtml("lot")} Parking</span>
       </div>
     </div>
-    <button type="button" id="drop-pin-btn" class="drop-pin-btn">Drop a pin</button>
     <div id="map-sheet" class="map-sheet">
-      <div id="sheet-name" class="sheet-title">Tap where you parked</div>
-      <p id="sheet-sub" class="sheet-helper" hidden></p>
+      <div id="sheet-name" class="sheet-title">Pick where you parked</div>
+      <p id="sheet-sub" class="sheet-helper">Zoom in if you need to. Tap the blue P where you left the car. Green marks the trailhead, not parking.</p>
+      <button type="button" id="drop-pin-btn" class="sheet-pin-btn">Can’t find the lot? Tap here to drop a pin</button>
     </div>
     <div class="actions">
       <button type="button" class="back" id="back">&lt;&lt; Back</button>
       <button type="button" class="next" id="map-next" disabled>Continue</button>
+    </div>
+    <div id="search-choices-modal" class="search-choices-modal" hidden aria-hidden="true">
+      <button type="button" class="search-choices-backdrop" aria-label="Close list"></button>
+      <div class="search-choices-panel" role="dialog" aria-labelledby="search-choices-heading">
+        <button type="button" class="search-choices-close" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+        <p id="search-choices-heading" class="search-choices-title">Which one?</p>
+        <div id="search-choices-list" class="search-choices-list"></div>
+      </div>
     </div>
     </div>
     <div id="name-step" class="name-step" hidden>
@@ -798,6 +1056,8 @@ export function destroyMap() {
   expandedZoom = null;
   chosen = null;
   droppingMode = false;
+  anchorTrailLabel = "";
+  clearSearchChoices();
 }
 
 export function mountMap(_root, go) {
@@ -857,6 +1117,7 @@ export function mountMap(_root, go) {
       expandedKeys.clear();
       expandedZoom = null;
       clearSelection();
+      clearSearchChoices();
       setBanner("map-note", "");
       map.setView([region.lat, region.lon], 13);
       loadPins();
@@ -870,22 +1131,23 @@ export function mountMap(_root, go) {
       search();
     }
   });
+  document.querySelector(".search-choices-backdrop")?.addEventListener("click", clearSearchChoices);
+  document.querySelector(".search-choices-close")?.addEventListener("click", clearSearchChoices);
+  document.addEventListener("keydown", (event) => {
+    if (event.key !== "Escape") return;
+    const modal = document.getElementById("search-choices-modal");
+    if (modal && !modal.hidden) clearSearchChoices();
+  });
 
   document.getElementById("drop-pin-btn").addEventListener("click", () => {
     droppingMode = !droppingMode;
     if (droppingMode) {
       clearDropped();
       chosen = null;
-      fadeCard();
-      document.getElementById("sheet-name").textContent = "Drop your pin";
-      const sub = document.getElementById("sheet-sub");
-      sub.textContent = "Tap the map on the exact spot where you parked.";
-      sub.hidden = false;
       setContinue(false);
-    } else if (!chosen) {
-      sheet(null);
     }
     syncDropButton();
+    sheet(chosen);
   });
 
   document.getElementById("place-name").addEventListener("input", (event) => {
@@ -916,5 +1178,7 @@ export function mountMap(_root, go) {
       requestAnimationFrame(fitMap);
     }
   });
+  syncDropButton();
+  sheet(null);
   loadPins();
 }
