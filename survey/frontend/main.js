@@ -13,7 +13,7 @@ const trailheadLine = document.getElementById("trailhead-line");
 const stepLine = document.getElementById("step-line");
 
 function screenHtml() {
-  if (currentVisit.stepId !== "start") {
+  if (currentVisit.stepId !== "start" && currentVisit.stepId !== "guide") {
     const waiting = loadingMessage();
     if (waiting) return waiting;
   }
@@ -22,8 +22,10 @@ function screenHtml() {
 
 function draw(moveFocus) {
   const atStart = currentVisit.stepId === "start";
+  const onGuide = currentVisit.stepId === "guide";
   const onMap = currentVisit.stepId === "map";
   document.body.classList.toggle("at-start", atStart);
+  document.body.classList.toggle("on-guide", onGuide);
   document.body.classList.toggle("on-map-step", onMap);
   if (!onMap) document.body.classList.remove("map-naming");
   trailheadLine.textContent = currentVisit.trailhead && !atStart && !onMap

@@ -7,13 +7,42 @@ const SEARCH_WIDE_SPAN_LAT = 0.35;
 const SEARCH_WIDE_SPAN_LON = 0.45;
 const TILE_URL = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
 const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
+const NO_P_NOTE = "I didn't find a lot in this area. Drop a pin to mark where you parked.";
+const SUGGEST_EMPTY = "Nothing matched. Try a town, or coordinates like 47.49, -121.72.";
 const REGIONS = [
-  { label: "North Bend", lat: 47.4881, lon: -121.7237 },
-  { label: "Mount Rainier", lat: 46.7865, lon: -121.7360 },
-  { label: "Olympic Peninsula", lat: 47.9693, lon: -123.4986 },
-  { label: "Leavenworth", lat: 47.5962, lon: -120.6615 },
-  { label: "North Cascades", lat: 48.7110, lon: -121.2065 },
+  { label: "North Bend", placeType: "town", lat: 47.4881, lon: -121.7237 },
+  { label: "Mount Rainier", placeType: "park", lat: 46.7865, lon: -121.7360 },
+  { label: "Olympic Peninsula", placeType: "region", lat: 47.9693, lon: -123.4986 },
+  { label: "Leavenworth", placeType: "town", lat: 47.5962, lon: -120.6615 },
+  { label: "North Cascades", placeType: "range", lat: 48.7110, lon: -121.2065 },
 ];
+
+const filters = {
+  hike: true,
+  bike: false,
+  ski: false,
+  climb: false,
+  run: false,
+  camp: false,
+  shelter: false,
+  peak: false,
+  range: false,
+  viewpoint: false,
+};
+const COUNTED_KINDS = new Set(["hike", "climb"]);
+const ACTIVITY_FILTERS = [
+  ["hike", "Hike"],
+  ["bike", "Bike"],
+  ["ski", "Ski"],
+  ["climb", "Climb"],
+  ["run", "Run"],
+  ["camp", "Camp"],
+  ["shelter", "Shelter"],
+  ["peak", "Peak"],
+  ["range", "Range"],
+  ["viewpoint", "Viewpoint"],
+];
+let viewLabel = "North Bend";
 
 let map = null;
 let pins = [];
@@ -23,9 +52,19 @@ let knownPins = new Map();
 let expandedKeys = new Set();
 let expandedZoom = null;
 let chosen = null;
+let namedRouteKey = "";
 let moveTimer = null;
 let mapResizeHandler = null;
 let mapFrameObserver = null;
+let suggestTimer = null;
+let suggestToken = 0;
+let suggestQuery = "";
+let namingChoice = false;
+let suppressNoPNote = false;
+let dismissedGuide = "";
+let toastRole = "";
+let toastText = "";
+let pinsRequested = false;
 let fromPin = false;
 let droppingMode = false;
 let loadToken = 0;
@@ -53,11 +92,7 @@ function mergePins(incoming) {
   return visible;
 }
 
-function mapHint(html) {
-  return html;
-}
-
-function markHtml(kind, count = 0, selected = false) {
+function markHtml(kind, count = 0, selected = false, community = false) {
   if (kind === "cluster") {
     return `<div class="mark mark-cluster" aria-label="${count} pins">${count}</div>`;
   }
@@ -65,11 +100,11 @@ function markHtml(kind, count = 0, selected = false) {
     const fill = selected ? "#a34e22" : "#0b7a56";
     return `<svg class="mark mark-trail" viewBox="0 0 28 28" aria-hidden="true">
       <circle cx="14" cy="14" r="12.5" fill="${fill}" stroke="#ffffff" stroke-width="2.5"/>
-      <path d="M7.5 19.5 L13 9.5 L16.5 15.5 L19 12 L21.5 19.5 Z" fill="#ffffff"/>
+      <path d="M6.4 18.6c2.2-3.6 3.4-3.6 5.4 0s3.2 3.6 5.4 0 3-3.6 4.4 0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
     </svg>`;
   }
   if (kind === "lot") {
-    const fill = selected ? "#a34e22" : "#1d4e89";
+    const fill = selected ? "#a34e22" : (community ? "#7b4bb5" : "#1d4e89");
     return `<svg class="mark mark-lot" viewBox="0 0 28 28" aria-hidden="true">
       <rect x="2.5" y="2.5" width="23" height="23" rx="6" fill="${fill}" stroke="#ffffff" stroke-width="2.5"/>
       <path d="M10.5 19.5V8.5h4.6c2.2 0 3.6 1.3 3.6 3.3 0 2.1-1.4 3.4-3.6 3.4h-2.3v4.3h-2.3zm2.3-6.2h2c1 0 1.6-.6 1.6-1.5 0-.9-.6-1.4-1.6-1.4h-2v2.9z" fill="#ffffff"/>
@@ -81,7 +116,59 @@ function markHtml(kind, count = 0, selected = false) {
   </svg>`;
 }
 
-function makeIcon(kind, count = 0, shifted = false, selected = false) {
+function isCommunityPin(pin) {
+  return Boolean(pin && (pin.community || pin.pending || pin.source === "community"));
+}
+
+function keyCircle(fill, inner) {
+  return `<svg class="mark key-mark" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="${fill}"/>${inner}</svg>`;
+}
+
+function activityMark(id) {
+  if (id === "hike") return markHtml("trail");
+  if (id === "bike") {
+    return keyCircle(
+      "#1a7aa8",
+      `<circle cx="9.2" cy="18.2" r="3.1" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="19" cy="18.2" r="3.1" fill="none" stroke="#fff" stroke-width="1.7"/><path d="M9.2 18.2 12.6 11.4h4.6l2.2 6.8M12.6 11.4 15.4 18.2" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>`,
+    );
+  }
+  if (id === "ski") {
+    return keyCircle(
+      "#3e6f96",
+      `<path d="M10 7.5c2.4 5.2 2.2 7.4-.2 13M17.2 7.5c2.4 5.2 2.2 7.4-.2 13" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "climb") return placeMark("climb");
+  if (id === "run") {
+    return keyCircle(
+      "#c4526a",
+      `<circle cx="15.2" cy="8.2" r="2" fill="#fff"/><path d="M14.6 11.2 11.4 16.2l-3.2 1.6M14.2 12.4l3.4 1.4 1.8 4.4M10.8 16.2 14.2 21" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
+    );
+  }
+  if (id === "camp") {
+    return keyCircle(
+      "#5f8a32",
+      `<path d="M5.8 20.6 14 8.2l8.2 12.4H5.8z" fill="#fff"/><path d="M14 8.6v12" stroke="#5f8a32" stroke-width="1.3"/>`,
+    );
+  }
+  if (id === "shelter") {
+    return keyCircle(
+      "#8a6244",
+      `<path d="M6.2 13.4 14 7.2l7.8 6.2V21H6.2v-7.6z" fill="#fff"/>`,
+    );
+  }
+  if (id === "peak") return placeMark("peak");
+  if (id === "range") return targetMark();
+  if (id === "viewpoint") {
+    return keyCircle(
+      "#2a8a8a",
+      `<circle cx="14" cy="14" r="3.3" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="14" cy="14" r="1.15" fill="#fff"/><path d="M14 6.8v2.3M14 18.9v2.3M6.8 14h2.3M18.9 14h2.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+    );
+  }
+  return keyCircle("#8a8178", `<circle cx="14" cy="14" r="3" fill="#fff"/>`);
+}
+
+function makeIcon(kind, count = 0, shifted = false, selected = false, community = false) {
   if (kind === "cluster") {
     return window.L.divIcon({
       className: "pin-wrap",
@@ -96,7 +183,7 @@ function makeIcon(kind, count = 0, shifted = false, selected = false) {
   const anchor = isDrop ? [14, 31] : (shifted ? [size + 8, size + 8] : [size / 2, size / 2]);
   return window.L.divIcon({
     className: selected ? "pin-wrap is-selected" : "pin-wrap",
-    html: markHtml(kind, 0, selected),
+    html: markHtml(kind, 0, selected, community),
     iconSize: isDrop ? [28, 34] : [size, size],
     iconAnchor: anchor,
   });
@@ -183,26 +270,42 @@ function showSearchChoices(choices) {
   list.querySelector(".search-choice")?.focus();
 }
 
-function anchorMapNote(hasPins) {
-  const where = soughtLabel ? `For ${soughtLabel}, ` : "";
-  if (hasPins) {
-    return `${where}zoom if you need to, then tap the blue P where you parked. Green icons mark trailheads nearby.`;
+function isActivityPin(pin) {
+  return Boolean(pin && pin.kind !== "parking" && pin.kind !== "trailhead" && pin.kind in filters);
+}
+
+function pinShown(pin) {
+  if (pin.kind === "parking") return true;
+  if (pin.kind === "trailhead") return filters.hike || isChosenPin(pin);
+  if (pin.kind === "hike") return filters.hike || isChosenPin(pin);
+  if (isActivityPin(pin)) return Boolean(filters[pin.kind]);
+  return false;
+}
+
+function parkingIn(list) {
+  return (list || []).some((pin) => pin.kind === "parking");
+}
+
+function parkingInView(list) {
+  if (!map) return false;
+  const bounds = map.getBounds();
+  return (list || []).some((pin) => pin.kind === "parking" && bounds.contains([pin.lat, pin.lon]));
+}
+
+function showAreaGuide(list) {
+  if (userMarkedSpot()) return;
+  const lots = map ? parkingInView(list) : parkingIn(list);
+  if (!lots) {
+    showToast(NO_P_NOTE, "is-warn", "guide");
+    return;
   }
-  return `${where}no blue P here yet. Zoom and pan to the lot, or tap below to drop a pin on the map.`;
-}
-
-function emptyViewNote() {
-  const where = soughtLabel ? `For ${soughtLabel}, ` : "";
-  return `${where}no blue P in this view. Pinch to zoom in, pan to the lot, or tap below to drop a pin.`;
-}
-
-function zoomedOutNote() {
-  const where = soughtLabel ? `${soughtLabel} is centered. ` : "";
-  return `${where}Pinch to zoom in until blue parking icons appear, then tap the P for your lot.`;
-}
-
-function zoomedOutCachedNote() {
-  return "Pinch to zoom in for more lots nearby. Blue P is parking; green marks trailheads.";
+  if (!filters.hike) {
+    showToast(
+      "Hike pins are off. Tap a blue P, or turn Hike back on.",
+      "is-warn",
+      "guide",
+    );
+  }
 }
 
 function userMarkedSpot() {
@@ -218,7 +321,7 @@ function placedPinNote() {
 }
 
 function showPlacedPinBanner() {
-  setBanner("map-note", placedPinNote(), "is-ok");
+  showToast(placedPinNote(), "is-ok", "selection");
 }
 
 function lotConfirmNote(state) {
@@ -236,7 +339,7 @@ function lotConfirmNote(state) {
 }
 
 function showLotConfirmBanner(state) {
-  setBanner("map-note", lotConfirmNote(state), "is-ok");
+  showToast(lotConfirmNote(state), "is-ok", "selection");
 }
 
 function hasLotSelection() {
@@ -275,15 +378,26 @@ function frameSearchArea(choice, near) {
   });
 }
 
+function useChoiceName(choice) {
+  const input = document.getElementById("search-input");
+  const label = String(choice?.label || "").trim();
+  if (!input || !label) return;
+  namingChoice = true;
+  input.value = label;
+  suggestQuery = label;
+  namingChoice = false;
+}
+
 async function applySearchChoice(choice) {
   if (!map || !choice) return;
   clearSearchChoices();
-  setBanner("searching-near", "");
+  clearWait();
+  useChoiceName(choice);
   if (choice.kind === "pin" && choice.pin) {
     loadToken++;
     soughtLabel = "";
     anchorTrailLabel = "";
-    setBanner("map-note", "");
+    clearToast();
     map.setView([choice.lat, choice.lon], 16);
     drawPins(mergePins([choice.pin]));
     selectPin(choice.pin);
@@ -297,8 +411,10 @@ async function applySearchChoice(choice) {
   const token = ++loadToken;
   clearSelection();
   soughtLabel = choice.label;
-  setBanner("map-note", "");
-  setBanner("searching-near", "Looking nearby", "is-wait");
+  dismissedGuide = "";
+  suppressNoPNote = false;
+  clearToast();
+  showWait("Searching…");
   try {
     const payload = await fetchNear(choice.lat, choice.lon);
     if (token !== loadToken) return;
@@ -308,20 +424,18 @@ async function applySearchChoice(choice) {
       mergePins(near);
       frameSearchArea(choice, near);
       drawPins(mergePins([]));
-      setBanner("searching-near", payload.searching_near ? `Near ${payload.searching_near}` : "This area");
-      setBanner("map-note", anchorMapNote(true));
+      clearWait();
+      showAreaGuide(near);
     } else {
       frameSearchArea(choice, []);
       await loadPins(true);
-      const hasPins = loaded.length > 0;
-      setBanner("map-note", anchorMapNote(hasPins), hasPins ? null : "is-warn");
+      showAreaGuide(loaded);
     }
   } catch (_err) {
-    setBanner("searching-near", "");
+    clearWait();
     frameSearchArea(choice, []);
     await loadPins(true);
-    const hasPins = loaded.length > 0;
-    setBanner("map-note", anchorMapNote(hasPins), hasPins ? null : "is-warn");
+    showAreaGuide(loaded);
   }
 }
 
@@ -373,7 +487,60 @@ function setBanner(id, text, kind) {
     mark.setAttribute("aria-hidden", "true");
     el.append(mark);
   }
-  el.append(document.createTextNode(text));
+  const copy = document.createElement("span");
+  copy.className = "banner-copy";
+  copy.textContent = text;
+  el.append(copy);
+}
+
+function showToast(text, kind, role) {
+  const el = document.getElementById("map-toast");
+  if (!el) return;
+  if (role === "guide" && text && text === dismissedGuide) return;
+  if (text && text === toastText && !el.hidden && toastRole === (role || "")) return;
+  el.classList.remove("is-wait", "is-warn", "is-ok");
+  el.replaceChildren();
+  toastText = text || "";
+  if (!text) {
+    el.hidden = true;
+    toastRole = "";
+    return;
+  }
+  toastRole = role || "";
+  el.hidden = false;
+  if (kind) el.classList.add(kind);
+  const copy = document.createElement("span");
+  copy.className = "banner-copy";
+  copy.textContent = text;
+  el.append(copy);
+  if (role === "guide") {
+    const close = document.createElement("button");
+    close.type = "button";
+    close.className = "banner-dismiss";
+    close.setAttribute("aria-label", "Dismiss");
+    close.textContent = "×";
+    close.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      dismissedGuide = text;
+      showToast("");
+    });
+    el.append(close);
+  }
+}
+
+function clearToast(role) {
+  if (role && toastRole !== role) return;
+  showToast("");
+}
+
+function showWait(text) {
+  if (toastRole === "guide" || toastRole === "selection") return;
+  showToast(text, "is-wait", "wait");
+}
+
+function clearWait() {
+  if (toastRole === "wait") showToast("");
 }
 
 function setContinue(enabled) {
@@ -386,22 +553,28 @@ function setNameReady(enabled) {
   if (button) button.disabled = !enabled;
 }
 
+function dropButtonMarkup(active) {
+  return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.2a6.2 6.2 0 0 0-6.2 6.2c0 4.6 6.2 11.4 6.2 11.4s6.2-6.8 6.2-11.4A6.2 6.2 0 0 0 12 2.2z" fill="currentColor"/><circle cx="12" cy="8.4" r="2.1" fill="#fff"/></svg><span>${active ? "Tap the map" : "Drop a pin"}</span>`;
+}
+
 function syncDropButton() {
   const btn = document.getElementById("drop-pin-btn");
   const card = document.getElementById("map-sheet");
   const frame = document.querySelector(".map-frame");
   if (!btn) return;
   if (droppingMode) {
-    btn.textContent = "Cancel — don’t drop a pin";
+    btn.innerHTML = dropButtonMarkup(true);
     btn.classList.add("active");
+    btn.setAttribute("aria-pressed", "true");
     card?.classList.add("map-sheet-dropping");
     frame?.classList.add("map-dropping");
     if (map?.dragging) {
       map.dragging.disable();
     }
   } else {
-    btn.textContent = "Can’t find it? Drop a pin";
+    btn.innerHTML = dropButtonMarkup(false);
     btn.classList.remove("active");
+    btn.setAttribute("aria-pressed", "false");
     card?.classList.remove("map-sheet-dropping");
     frame?.classList.remove("map-dropping");
     if (map?.dragging) {
@@ -434,22 +607,22 @@ function sheet(state) {
   const sub = document.getElementById("sheet-sub");
   if (!title || !sub) return;
   fadeCard();
-  let heading = "Where did you park?";
-  let note = mapHint(
-    `${markHtml("lot")}<span>Tap your lot on the map.</span> ${markHtml("trail")}<span>is the trailhead.</span>`,
-  );
-  let noteHtml = true;
+  let heading = "Tap the P in the blue symbol or drop a pin for the lot.";
+  let note = "";
+  let noteHtml = false;
   let enabled = false;
   if (state?.mode === "pick-lot") {
     heading = state.pin.name || "Trailhead";
-    note = mapHint(`${markHtml("lot")}<span>Tap the lot you used.</span>`);
-    noteHtml = true;
+    note = "Tap the lot you used.";
+    noteHtml = false;
   } else if (state?.mode === "trailhead") {
     heading = state.pin.name || "Trailhead";
-    note = mapHint(
-      `${markHtml("trail")}<span>That’s the trailhead.</span> ${markHtml("lot")}<span>Tap your lot, or drop a pin.</span>`,
-    );
-    noteHtml = true;
+    note = "That’s the trailhead. Tap your lot, or use Drop a pin.";
+    noteHtml = false;
+  } else if (state?.mode === "route") {
+    heading = state.pin?.name || "Trail";
+    note = "Tap a P for the lot, or drop a pin.";
+    noteHtml = false;
   } else if (state?.mode === "pin") {
     heading = state.pin.name;
     note = "";
@@ -467,7 +640,7 @@ function sheet(state) {
     enabled = true;
   } else if (droppingMode) {
     heading = "Drop a pin on the lot";
-    note = "Zoom in, then tap where you parked.";
+    note = "Tap where you parked. You can zoom in to fix the point.";
     noteHtml = false;
   }
   const card = document.getElementById("map-sheet");
@@ -489,7 +662,7 @@ function sheet(state) {
   } else if (lotPicked) {
     showLotConfirmBanner(state);
   } else if (!state && !droppingMode) {
-    setBanner("map-note", "");
+    clearToast("selection");
   }
 }
 
@@ -560,6 +733,7 @@ function closestPin(latlng, maxMeters = 120) {
   let best = null;
   let bestMeters = maxMeters;
   for (const pin of loaded) {
+    if (isActivityPin(pin)) continue;
     const meters = map.distance(latlng, [pin.lat, pin.lon]);
     if (meters < bestMeters) {
       bestMeters = meters;
@@ -732,10 +906,24 @@ function groupPins(places) {
   return result;
 }
 
+function hikeMountain() {
+  return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#0b7a56"/><path d="M5.5 20.5 11 9.2l3.2 5.4L18.2 8 22.5 20.5Z" fill="#fff"/></svg>`;
+}
+
+function activityIcon(kind) {
+  return window.L.divIcon({
+    className: "pin-wrap",
+    html: kind === "hike" ? hikeMountain() : activityMark(kind),
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
+
 function drawPins(places) {
   clearPins();
   loaded = places;
-  const groups = groupPins(places);
+  const shown = places.filter(pinShown);
+  const groups = groupPins(shown.filter((pin) => !isActivityPin(pin)));
   for (const group of groups) {
     if (group.items.length > 1) {
       const marker = window.L.marker([group.lat, group.lon], {
@@ -774,7 +962,7 @@ function drawPins(places) {
     );
     const marker = window.L.marker([pin.lat, pin.lon], {
       pane: isTrail ? "trailPins" : "lotPins",
-      icon: makeIcon(kind, 0, besideLot, selected),
+      icon: makeIcon(kind, 0, besideLot, selected, !isTrail && isCommunityPin(pin)),
       zIndexOffset: selected ? 900 : (isTrail ? 0 : 400),
     }).addTo(map);
     marker.on("click", (event) => {
@@ -787,15 +975,74 @@ function drawPins(places) {
     });
     pins.push(marker);
   }
+  for (const pin of shown.filter(isActivityPin)) {
+    const marker = window.L.marker([pin.lat, pin.lon], {
+      pane: "activityPins",
+      icon: activityIcon(pin.kind),
+      zIndexOffset: 200,
+    }).addTo(map);
+    if (pin.name && pinKey(pin) === namedRouteKey) {
+      marker.bindTooltip(pin.name, {
+        permanent: true,
+        direction: "right",
+        className: "route-label",
+        offset: [10, 0],
+        opacity: 1,
+      });
+    }
+    marker.on("click", (event) => {
+      fromPin = true;
+      window.L.DomEvent.stopPropagation(event);
+      const key = pinKey(pin);
+      if (namedRouteKey === key) {
+        namedRouteKey = "";
+        if (chosen?.mode === "route") {
+          chosen = null;
+          sheet(null);
+        }
+      } else {
+        namedRouteKey = key;
+        droppingMode = false;
+        syncDropButton();
+        chosen = { mode: "route", pin, trailName: pin.name || "" };
+        showToast("");
+        sheet(chosen);
+      }
+      drawPins(loaded);
+      setTimeout(() => {
+        fromPin = false;
+      }, 0);
+    });
+    pins.push(marker);
+  }
+  syncFilterPills();
+}
+
+function restoreSelectionNote() {
+  if (chosen?.mode === "name") showPlacedPinBanner();
+  else if (hasLotSelection()) showLotConfirmBanner(chosen);
+}
+
+function offerGuide(text) {
+  if (toastRole === "guide" || toastRole === "selection") return;
+  showToast(text, "is-warn", "guide");
 }
 
 async function loadPins(keepNote = false) {
   const frame = document.getElementById("visit-map");
   if (!map || !frame || frame.offsetHeight < 40) return;
+  pinsRequested = true;
   if (!keepNote) soughtLabel = "";
   const token = ++loadToken;
+  if (
+    !userMarkedSpot()
+    && toastRole !== "selection"
+    && !toastText.startsWith("I didn't find a lot")
+    && !parkingInView(loaded)
+  ) {
+    showToast("Searching…", "is-wait", "wait");
+  }
   const bounds = map.getBounds();
-  setBanner("searching-near", "Looking nearby", "is-wait");
   try {
     const payload = await getMapView({
       south: bounds.getSouth(),
@@ -805,55 +1052,35 @@ async function loadPins(keepNote = false) {
     });
     if (token !== loadToken) return;
     if (payload.zoomed_out) {
-      setBanner("searching-near", "");
       if (knownPins.size > 0) {
         drawPins(mergePins([]));
       } else {
         clearPins();
       }
       if (!keepNote) {
-        if (userMarkedSpot()) {
-          if (chosen?.mode === "name") {
-            showPlacedPinBanner();
-          } else if (hasLotSelection()) {
-            showLotConfirmBanner(chosen);
-          }
-        } else if (knownPins.size > 0) {
-          setBanner("map-note", zoomedOutCachedNote(), "is-warn");
-        } else {
-          setBanner("map-note", zoomedOutNote(), "is-warn");
-        }
+        if (userMarkedSpot()) restoreSelectionNote();
+        else offerGuide(NO_P_NOTE);
+      } else if (toastText === "Searching…") {
+        clearToast("wait");
       }
       return;
     }
     const merged = mergePins(payload.places);
     drawPins(merged);
-    if (merged.length === 0) {
-      setBanner("searching-near", "");
-      if (userMarkedSpot()) {
-        if (chosen?.mode === "name") {
-          showPlacedPinBanner();
-        } else if (hasLotSelection()) {
-          showLotConfirmBanner(chosen);
-        }
-      } else if (!keepNote) {
-        setBanner("map-note", emptyViewNote(), "is-warn");
-      }
-    } else {
-      if (!keepNote && userMarkedSpot()) {
-        if (chosen?.mode === "name") {
-          showPlacedPinBanner();
-        } else if (hasLotSelection()) {
-          showLotConfirmBanner(chosen);
-        }
-      } else if (!keepNote && !userMarkedSpot()) {
-        setBanner("map-note", "");
-      }
-      if (payload.searching_near) {
-        setBanner("searching-near", `Near ${payload.searching_near}`);
+    const noLot = !userMarkedSpot() && !parkingInView(merged);
+    if (noLot) {
+      if (suppressNoPNote) {
+        suppressNoPNote = false;
+        if (toastText === "Searching…") clearToast("wait");
       } else {
-        setBanner("searching-near", "This area");
+        showToast(NO_P_NOTE, "is-warn", "guide");
       }
+    } else if (toastText.startsWith("I didn't find a lot")) {
+      clearToast("guide");
+    } else if (toastText === "Searching…") {
+      clearToast("wait");
+    } else if (!keepNote && userMarkedSpot()) {
+      restoreSelectionNote();
     }
   } catch (_err) {
     if (token !== loadToken) return;
@@ -861,11 +1088,10 @@ async function loadPins(keepNote = false) {
       drawPins(loaded);
       return;
     }
-    setBanner("searching-near", "");
-    setBanner(
-      "map-note",
-      "OpenStreetMap is taking a moment to respond. You can still drop a pin, or enter lat, lon above.",
+    showToast(
+      "OpenStreetMap is taking a moment to respond. You can still use Drop a pin, or enter lat, lon in the search.",
       "is-warn",
+      "guide",
     );
   }
 }
@@ -935,27 +1161,37 @@ function onMapClick(event) {
   dropAt(event.latlng.lat, event.latlng.lng);
 }
 
+function coordinatePair(text) {
+  const match = COORD_RE.exec(text);
+  if (!match) return null;
+  const lat = Number(match[1]);
+  const lon = Number(match[2]);
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+}
+
+async function jumpToCoordinates(lat, lon) {
+  loadToken++;
+  soughtLabel = "";
+  anchorTrailLabel = "";
+  clearToast();
+  map.setView([lat, lon], 16);
+  await loadPins(true);
+  dropAt(lat, lon);
+}
+
 async function search() {
   const input = document.getElementById("search-input");
   const text = input.value.trim();
   if (text.length < 2 || !map) return;
 
+  hideSuggest();
   clearSearchChoices();
 
-  const coordMatch = COORD_RE.exec(text);
-  if (coordMatch) {
-    const lat = Number(coordMatch[1]);
-    const lon = Number(coordMatch[2]);
-    if (lat >= -90 && lat <= 90 && lon >= -180 && lon <= 180) {
-      loadToken++;
-      soughtLabel = "";
-      anchorTrailLabel = "";
-      setBanner("map-note", "");
-      map.setView([lat, lon], 16);
-      await loadPins(true);
-      dropAt(lat, lon);
-      return;
-    }
+  const pair = coordinatePair(text);
+  if (pair) {
+    await jumpToCoordinates(pair.lat, pair.lon);
+    return;
   }
 
   const center = map.getCenter();
@@ -966,34 +1202,40 @@ async function search() {
     button.textContent = "Wait";
   }
   input.disabled = true;
-  setBanner("searching-near", "Searching…", "is-wait");
-  setBanner("map-note", "Looking near the map. This can take a few seconds.", "is-wait");
+  showWait("Searching…");
   try {
     const payload = await searchMap(text, center.lat, center.lng);
     const choices = payload.choices || [];
-    setBanner("searching-near", "");
+    clearWait();
     if (choices.length === 0) {
+      const regions = matchingRegions(text);
+      if (regions.length === 1) {
+        jumpToRegion(regions[0]);
+        return;
+      }
+      if (regions.length > 1) {
+        showRegions(text);
+        return;
+      }
       soughtLabel = "";
-      setBanner(
-        "map-note",
-        `Nothing matched "${text}" from here. Try a town, a shorter name, coordinates (47.488, -121.724), or Drop a pin on the lot.`,
+      showToast(
+        `Nothing matched "${text}" from here. Try a town, a shorter name, coordinates (47.488, -121.724), or Drop a pin.`,
         "is-warn",
+        "guide",
       );
       return;
     }
     if (choices.length === 1) {
-      setBanner("map-note", "");
       await applySearchChoice(choices[0]);
       return;
     }
-    setBanner("map-note", "");
-    showSearchChoices(choices);
+    showSuggest(choices, text);
   } catch (_err) {
-    setBanner("searching-near", "");
-    setBanner(
-      "map-note",
-      "Search is slow right now. Pan the map to your lot, use Drop a pin, or enter lat, lon above.",
+    clearWait();
+    showToast(
+      "Search is slow right now. Pan the map to your lot, use Drop a pin, or enter lat, lon in the search.",
       "is-warn",
+      "guide",
     );
   } finally {
     input.disabled = false;
@@ -1035,51 +1277,352 @@ async function usePlace(go) {
     currentVisit.trailhead = saved;
     go("hikeStart");
   } catch (_err) {
-    setBanner("map-note", "Could not save that place right now. Please try again.", "is-warn");
+    showToast("Could not save that place right now. Please try again.", "is-warn", "guide");
     setContinue(true);
   }
 }
 
+function choiceRank(choice) {
+  if (choice.kind === "pin" && choice.pin?.kind === "parking") return 0;
+  if (choice.kind === "pin") return 1;
+  if (choice.kind === "trail") return 2;
+  return 3;
+}
+
+const PLACE_WORDS = {
+  city: "City",
+  town: "Town",
+  village: "Village",
+  hamlet: "Village",
+  suburb: "City",
+  neighbourhood: "City",
+  neighborhood: "City",
+  county: "Region",
+  state: "Region",
+  country: "Country",
+  peak: "Peak",
+  mountain: "Peak",
+  volcano: "Peak",
+  range: "Range",
+  park: "Park",
+  national_park: "Park",
+  protected_area: "Park",
+  region: "Region",
+  administrative: "Region",
+  climb: "Climb",
+  ski: "Ski",
+  piste: "Ski",
+  path: "Trail",
+  track: "Trail",
+  footway: "Trail",
+  hiking: "Trail",
+  trail: "Trail",
+  road: "Road",
+};
+
+function placeWord(type) {
+  return PLACE_WORDS[String(type || "").toLowerCase()] || "Place";
+}
+
+function targetMark() {
+  return keyCircle(
+    "#3e4d63",
+    `<circle cx="14" cy="14" r="5.2" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="14" cy="14" r="2.5" fill="none" stroke="#fff" stroke-width="1.5"/><circle cx="14" cy="14" r="0.9" fill="#fff"/>`,
+  );
+}
+
+function placeMark(type) {
+  const kind = placeWord(type);
+  const peak = `<path d="M5.5 20.5 11 9.2l3.2 5.4L18.2 8 22.5 20.5Z" fill="#fff"/>`;
+  if (kind === "Country") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#2a74c4"/><ellipse cx="14" cy="14" rx="5.5" ry="10.5" fill="none" stroke="#fff" stroke-width="1.5"/><path d="M4.2 14h19.6M6.4 9.4h15.2M6.4 18.6h15.2" fill="none" stroke="#fff" stroke-width="1.4"/></svg>`;
+  }
+  if (kind === "Peak") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#6b4423"/>${peak}</svg>`;
+  }
+  if (kind === "Range") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#3d5a73"/><path d="M3.2 21.2 8.4 12.4l3.1 4.2 4.2-7.6 4.6 6.2 4.5-3.4 2.2 9.4Z" fill="#fff"/></svg>`;
+  }
+  if (kind === "Climb") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#5a4d9a"/><path d="M7.5 20.5 14 6.8l2.3 5.2 4.7 8.5Z" fill="#fff"/></svg>`;
+  }
+  if (kind === "Park") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#1e8f5a"/><path d="M14 7.2 19 16.2h-2.2V21h-5.6v-4.8H9Z" fill="#fff"/></svg>`;
+  }
+  if (kind === "Region") {
+    return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#2a9a9a"/><path d="M7 17.5c2.2-3.2 4.4-4.6 7-4.6s4.8 1.4 7 4.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/><circle cx="14" cy="10.2" r="1.7" fill="#fff"/></svg>`;
+  }
+  return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#e08a2a"/><path d="M8 20.4V12.6L14 8.2l6 4.4v7.8h-3.7v-4.5h-4.6v4.5H8z" fill="#fff"/></svg>`;
+}
+
+function routeMark() {
+  return `<svg class="mark mark-route" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#3d6b4f"/><path d="M7.2 18.8c2.4-4 3.5-4 5.6 0s3.2 4 5.6 0 3.2-4 4.6 0" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/></svg>`;
+}
+
+function choiceMark(choice) {
+  if (choice.kind === "pin" && choice.pin?.kind === "parking") {
+    return markHtml("lot", 0, false, isCommunityPin(choice.pin));
+  }
+  if (choice.kind === "trail") return hikeMountain();
+  if (choice.kind === "pin") return markHtml("trail");
+  if (choice.kind === "climb") return placeMark("climb");
+  if (choice.kind === "peak") return placeMark("peak");
+  if (String(choice.placeType || "").toLowerCase() === "range") return targetMark();
+  return placeMark(choice.placeType);
+}
+
+function choiceHint(choice) {
+  if (choice.kind === "pin" && choice.pin?.kind === "parking") return "Parking";
+  if (choice.kind === "pin") return "Trailhead";
+  if (choice.kind === "trail") return "Hike";
+  if (choice.kind === "climb") return "Climb";
+  if (choice.kind === "peak") return "Peak";
+  const word = placeWord(choice.placeType);
+  if (word === "Road" && /trail/i.test(choice.label || "")) return "Trail";
+  return word;
+}
+
+function suggestRow(label, hint, markHtml, onClick, where, detail) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "suggest-row";
+  const mark = document.createElement("span");
+  mark.className = "suggest-mark";
+  if (markHtml) mark.innerHTML = markHtml;
+  const text = document.createElement("span");
+  text.className = "suggest-text";
+  const name = document.createElement("span");
+  name.className = "suggest-name";
+  name.textContent = label;
+  text.append(name);
+  const extras = [];
+  const place = String(detail || "").trim();
+  const region = String(where || "").trim();
+  if (place && place !== label) extras.push(["suggest-detail", place]);
+  if (region && region !== place) extras.push(["suggest-where", region]);
+  if (hint && extras.length < 2) extras.push(["suggest-hint", hint]);
+  for (const [className, line] of extras.slice(0, 2)) {
+    const node = document.createElement("span");
+    node.className = className;
+    node.textContent = line;
+    text.append(node);
+  }
+  btn.append(mark, text);
+  btn.addEventListener("click", onClick);
+  return btn;
+}
+
+function choiceWhere(choice) {
+  return String(choice.where || "").trim();
+}
+
+function hideSuggest() {
+  const panel = document.getElementById("map-suggest");
+  const shade = document.getElementById("suggest-shade");
+  const input = document.getElementById("search-input");
+  if (panel) panel.hidden = true;
+  if (shade) shade.hidden = true;
+  input?.setAttribute("aria-expanded", "false");
+  document.getElementById("map-step")?.classList.remove("suggest-open");
+}
+
+function matchingRegions(query) {
+  const text = query.trim().toLowerCase();
+  if (!text) return REGIONS;
+  return REGIONS.filter((region) => region.label.toLowerCase().includes(text));
+}
+
+function openSuggest(rows, emptyText = SUGGEST_EMPTY) {
+  const panel = document.getElementById("map-suggest");
+  const list = document.getElementById("map-suggest-list");
+  const input = document.getElementById("search-input");
+  if (!panel || !list) return;
+  list.replaceChildren();
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "suggest-label";
+    empty.textContent = emptyText;
+    list.append(empty);
+  } else {
+    for (const row of rows) list.append(row);
+  }
+  panel.hidden = false;
+  const shade = document.getElementById("suggest-shade");
+  if (shade) shade.hidden = false;
+  input?.setAttribute("aria-expanded", "true");
+  document.getElementById("map-step")?.classList.add("suggest-open");
+}
+
+function regionRows(query) {
+  return matchingRegions(query).map((region) => suggestRow(
+    region.label,
+    placeWord(region.placeType),
+    placeMark(region.placeType),
+    () => jumpToRegion(region),
+  ));
+}
+
+function showRegions(query = "") {
+  openSuggest(regionRows(query));
+}
+
+function jumpToRegion(region) {
+  if (!region || !map) return;
+  hideSuggest();
+  viewLabel = region.label;
+  loadToken++;
+  expandedKeys.clear();
+  expandedZoom = null;
+  clearSelection();
+  clearSearchChoices();
+  dismissedGuide = "";
+  clearToast();
+  map.setView([region.lat, region.lon], 13);
+  loadPins();
+}
+
+function queueSuggest(text) {
+  clearTimeout(suggestTimer);
+  const token = ++suggestToken;
+  const pair = coordinatePair(text);
+  if (pair) {
+    suggestQuery = text;
+    const label = `${pair.lat}, ${pair.lon}`;
+    openSuggest([
+      suggestRow(label, "Coordinates", markHtml("drop"), () => {
+        hideSuggest();
+        jumpToCoordinates(pair.lat, pair.lon);
+      }),
+    ]);
+    return;
+  }
+  if (text.length < 2) {
+    suggestQuery = text;
+    showRegions(text);
+    return;
+  }
+  const panel = document.getElementById("map-suggest");
+  const list = document.getElementById("map-suggest-list");
+  const already = suggestQuery === text && panel && !panel.hidden && list?.querySelector(".suggest-row");
+  if (!already) openSuggest([], "Searching…");
+  suggestTimer = setTimeout(async () => {
+    try {
+      const center = map.getCenter();
+      const payload = await searchMap(text, center.lat, center.lng);
+      if (token !== suggestToken) return;
+      const input = document.getElementById("search-input");
+      if (!input || input.value.trim() !== text) return;
+      suggestQuery = text;
+      showSuggest(payload.choices || [], text);
+    } catch (_err) {
+      if (token !== suggestToken) return;
+      suggestQuery = "";
+      openSuggest([]);
+    }
+  }, 250);
+}
+
+function showSuggest(choices, query = "") {
+  const center = map ? map.getCenter() : null;
+  const ranked = [...choices].sort((a, b) => {
+    if (!center || !map) return choiceRank(a) - choiceRank(b);
+    const aNear = map.distance(center, [a.lat, a.lon]);
+    const bNear = map.distance(center, [b.lat, b.lon]);
+    return aNear - bNear;
+  }).slice(0, 8);
+  const rows = regionRows(query);
+  const regionNames = new Set(matchingRegions(query).map((region) => region.label.toLowerCase()));
+  for (const choice of ranked) {
+    if (regionNames.has(String(choice.label || "").trim().toLowerCase())) continue;
+    rows.push(suggestRow(choice.label, choiceHint(choice), choiceMark(choice), () => {
+      hideSuggest();
+      applySearchChoice(choice);
+    }, choiceWhere(choice), choice.detail));
+  }
+  openSuggest(rows);
+}
+
+function activityCount(kind) {
+  if (!map || !COUNTED_KINDS.has(kind)) return 0;
+  const bounds = map.getBounds();
+  let count = 0;
+  for (const pin of loaded) {
+    if (pin.kind === kind && bounds.contains([pin.lat, pin.lon])) count += 1;
+  }
+  return count;
+}
+
+function syncFilterPills() {
+  document.querySelectorAll("[data-filter]").forEach((btn) => {
+    const key = btn.dataset.filter;
+    const on = Boolean(filters[key]);
+    btn.classList.toggle("is-on", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+    const word = btn.querySelector(".filter-word");
+    const label = word ? word.textContent.trim() : key;
+    const count = activityCount(key);
+    let badge = btn.querySelector(".filter-count");
+    if (count > 0) {
+      if (!badge && word) {
+        badge = document.createElement("span");
+        badge.className = "filter-count";
+        word.after(badge);
+      }
+      if (badge) badge.textContent = String(count);
+    } else if (badge) {
+      badge.remove();
+    }
+    const named = count > 0 ? `${label}, ${count} in view` : label;
+    btn.setAttribute("aria-label", on ? `Turn off ${named}` : named);
+  });
+}
+
+function toggleFilter(key) {
+  if (!(key in filters)) return;
+  filters[key] = !filters[key];
+  if (loaded.length > 0) drawPins(loaded);
+  if (key === "hike" && !filters.hike) {
+    showToast(
+      "Hike pins are off. Tap a blue P, or turn Hike back on.",
+      "is-warn",
+      "guide",
+    );
+  } else if (toastText.startsWith("Hike pins are off")) {
+    showToast("");
+  }
+  syncFilterPills();
+}
+
 export function render() {
-  const chips = REGIONS.map(
-    (region, idx) =>
-      `<button type="button" class="region-chip" data-region="${idx}">${esc(region.label)}</button>`,
-  ).join("");
+  const activities = ACTIVITY_FILTERS.map(([id, label]) => {
+    const on = filters[id] ? " is-on" : "";
+    const pressed = filters[id] ? "true" : "false";
+    const name = on ? `Turn off ${label}` : label;
+    return `<button type="button" class="filter-pill${on}" data-filter="${id}" aria-pressed="${pressed}" aria-label="${name}">${activityMark(id)}<span class="filter-line"><span class="filter-word">${label}</span></span></button>`;
+  }).join("");
   return `
     <div id="map-step">
+    <button type="button" id="suggest-shade" class="suggest-shade" hidden aria-label="Close place list"></button>
     <div class="map-toolbar">
-      <div class="map-regions" aria-label="Popular areas">${chips}</div>
       <div class="map-search-wrap">
         <div class="map-search">
-          <input id="search-input" type="search" placeholder="Trail, peak, or town" autocomplete="off">
-          <button type="button" id="search-button" class="secondary">Find</button>
-          <button
-            type="button"
-            id="search-help-btn"
-            class="map-search-info"
-            aria-label="Search and map help"
-            aria-expanded="false"
-            aria-controls="search-help-panel"
-          ><span aria-hidden="true">i</span></button>
+          <input id="search-input" type="search" placeholder="Trail, lot, peak, or town" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="map-suggest">
         </div>
-        <div id="search-help-panel" class="map-search-help" role="region" aria-label="Search and map help" hidden>
-          <p class="map-search-help-lede">Trail, peak, town, or coordinates like <span class="map-search-example">47.49, -121.72</span>.</p>
-          <ul class="map-help-legend" aria-label="Map symbols">
-            <li>${markHtml("lot")} Parking lot — tap the one you used</li>
-            <li>${markHtml("trail")} Trailhead — where the hike starts, not parking</li>
-          </ul>
+        <div id="map-suggest" class="map-suggest" hidden>
+          <div id="map-suggest-list"></div>
         </div>
       </div>
-      <p id="map-note" class="map-note" hidden></p>
+      <div class="map-filters" aria-label="Activities">${activities}</div>
     </div>
     <div class="map-frame">
       <div id="visit-map" class="map-canvas"></div>
+      <button type="button" id="drop-pin-btn" class="map-drop" aria-pressed="false">Drop a pin</button>
+      <p id="map-toast" class="map-toast" hidden></p>
       <p id="searching-near" class="map-place" hidden></p>
     </div>
     <div id="map-sheet" class="map-sheet">
-      <h1 id="sheet-name" class="sheet-title">Where did you park?</h1>
-      <p id="sheet-sub" class="sheet-helper sheet-hint"></p>
-      <button type="button" id="drop-pin-btn" class="sheet-pin-btn">Can’t find it? Drop a pin</button>
+      <h1 id="sheet-name" class="sheet-title">Tap the P in the blue symbol or drop a pin for the lot.</h1>
+      <p id="sheet-sub" class="sheet-helper" hidden></p>
       <div class="actions">
         <button type="button" class="back" id="back">&lt;&lt; Back</button>
         <button type="button" class="next" id="map-next" disabled>Continue</button>
@@ -1117,6 +1660,7 @@ export function render() {
 
 export function destroyMap() {
   clearTimeout(moveTimer);
+  clearTimeout(suggestTimer);
   if (mapResizeHandler) {
     window.removeEventListener("resize", mapResizeHandler);
     mapResizeHandler = null;
@@ -1138,6 +1682,9 @@ export function destroyMap() {
   chosen = null;
   droppingMode = false;
   anchorTrailLabel = "";
+  pinsRequested = false;
+  toastRole = "";
+  toastText = "";
   clearSearchChoices();
 }
 
@@ -1151,6 +1698,8 @@ export function mountMap(_root, go) {
 
   window.L.control.zoom({ position: "topright" }).addTo(map);
 
+  map.createPane("activityPins");
+  map.getPane("activityPins").style.zIndex = 600;
   map.createPane("trailPins");
   map.getPane("trailPins").style.zIndex = 610;
   map.createPane("lotPins");
@@ -1165,6 +1714,14 @@ export function mountMap(_root, go) {
     subdomains: "abc",
     attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
   }).addTo(map);
+
+  map.on("zoomstart", () => {
+    if (toastText.startsWith("I didn't find a lot")) {
+      suppressNoPNote = true;
+      clearToast("guide");
+      showToast("Searching…", "is-wait", "wait");
+    }
+  });
 
   map.on("zoomend", () => {
     if (expandedZoom !== null && map.getZoom() < expandedZoom) {
@@ -1189,6 +1746,7 @@ export function mountMap(_root, go) {
     const frame = document.querySelector(".map-frame");
     if (!map || !frame || frame.offsetHeight < 40) return false;
     map.invalidateSize();
+    if (!pinsRequested) loadPins();
     return true;
   }
 
@@ -1205,31 +1763,29 @@ export function mountMap(_root, go) {
     mapFrameObserver.observe(mapFrameEl);
   }
 
-  document.querySelectorAll("[data-region]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const region = REGIONS[Number(btn.dataset.region)];
-      if (!region) return;
-      loadToken++;
-      expandedKeys.clear();
-      expandedZoom = null;
-      clearSelection();
-      clearSearchChoices();
-      setBanner("map-note", "");
-      map.setView([region.lat, region.lon], 13);
-      loadPins();
-    });
+  document.getElementById("suggest-shade")?.addEventListener("click", () => hideSuggest());
+
+  document.getElementById("search-input").addEventListener("focus", () => {
+    if (namingChoice) return;
+    const input = document.getElementById("search-input");
+    const text = input.value.trim();
+    const panel = document.getElementById("map-suggest");
+    const list = document.getElementById("map-suggest-list");
+    if (text && text === suggestQuery && panel && !panel.hidden && list?.querySelector(".suggest-row")) return;
+    queueSuggest(text);
+  });
+  document.getElementById("search-input").addEventListener("input", () => {
+    if (namingChoice) return;
+    const input = document.getElementById("search-input");
+    queueSuggest(input.value.trim());
+  });
+  document.addEventListener("click", (event) => {
+    if (!event.target.closest(".map-search-wrap")) hideSuggest();
+  });
+  document.querySelectorAll("[data-filter]").forEach((btn) => {
+    btn.addEventListener("click", () => toggleFilter(btn.dataset.filter));
   });
 
-  document.getElementById("search-button").addEventListener("click", search);
-  document.getElementById("search-help-btn")?.addEventListener("click", () => {
-    const panel = document.getElementById("search-help-panel");
-    const btn = document.getElementById("search-help-btn");
-    if (!panel || !btn) return;
-    const open = panel.hidden;
-    panel.hidden = !open;
-    btn.setAttribute("aria-expanded", open ? "true" : "false");
-    btn.classList.toggle("is-open", open);
-  });
   document.getElementById("search-input").addEventListener("keydown", (event) => {
     if (event.key === "Enter") {
       event.preventDefault();
@@ -1242,6 +1798,7 @@ export function mountMap(_root, go) {
     if (event.key !== "Escape") return;
     const modal = document.getElementById("search-choices-modal");
     if (modal && !modal.hidden) clearSearchChoices();
+    else hideSuggest();
   });
 
   document.getElementById("drop-pin-btn").addEventListener("click", () => {

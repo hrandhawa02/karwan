@@ -256,7 +256,24 @@ def too_wide(south, west, north, east):
     return north - south > 0.4 or east - west > 0.6 or north <= south or east <= west
 
 
-def map_view(south, west, north, east):
+def _language_key(accept_language):
+    tag = (accept_language or "en").split(",", 1)[0].split(";", 1)[0].strip().lower()
+    return tag[:16] or "en"
+
+
+def _local_view(south, west, north, east, accept_language):
+    from survey.backend.outdoors import available, covers, view_places
+
+    if not available() or not covers(south, west, north, east):
+        return None
+    try:
+        return view_places(south, west, north, east, accept_language)
+    except Exception:
+        log.warning("local outdoors map failed", exc_info=True)
+        return None
+
+
+def map_view(south, west, north, east, accept_language=""):
     if too_wide(south, west, north, east):
         return {
             "searching_near": None,
@@ -279,10 +296,14 @@ def map_view(south, west, north, east):
     )
     center_lat = (south + north) / 2
     center_lon = (west + east) / 2
-    key = f"view:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    key = f"view:8:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
     cached = _recall(key)
     if cached is not None:
         return cached
+    local = _local_view(south, west, north, east, accept_language)
+    if local is not None:
+        _remember(key, local, WEEK)
+        return local
     area = _box(south, west, north, east)
     query = f"""
 [out:json][timeout:15];
@@ -432,11 +453,93 @@ def _choice_key(choice):
 def _append_choice(choices, seen, choice):
     if not choice:
         return
+    label = (choice.get("label") or "").casefold()
+    kind = choice.get("kind")
+    if label:
+        for item in choices:
+            if (item.get("label") or "").casefold() != label or item.get("kind") != kind:
+                continue
+            try:
+                km = _kilometers(item["lat"], item["lon"], choice["lat"], choice["lon"])
+            except (KeyError, TypeError, ValueError):
+                continue
+            if km < 2:
+                return
     key = _choice_key(choice)
     if key in seen:
         return
     seen.add(key)
     choices.append(choice)
+
+
+def _short_place(address):
+    address = address or {}
+    state = (address.get("state") or "").strip()
+    country = (address.get("country") or "").strip()
+    if state and country:
+        return f"{state}, {country}"
+    return state or country
+
+
+def _region_name(lat, lon):
+    url = "https://nominatim.openstreetmap.org/reverse?" + urllib.parse.urlencode({
+        "lat": f"{lat:.4f}",
+        "lon": f"{lon:.4f}",
+        "format": "jsonv2",
+        "zoom": "5",
+        "addressdetails": "1",
+    })
+    try:
+        payload = _get(url)
+    except (urllib.error.URLError, TimeoutError, json.JSONDecodeError):
+        return ""
+    return _short_place(payload.get("address") or {})
+
+
+def nearest_town(lat, lon):
+    cell_lat = round(float(lat), 1)
+    cell_lon = round(float(lon), 1)
+    key = f"regionat:{cell_lat:.1f}:{cell_lon:.1f}"
+    cached = _recall(key)
+    if isinstance(cached, dict):
+        return cached.get("name") or ""
+    name = _region_name(cell_lat, cell_lon)
+    _remember(key, {"name": name}, WEEK)
+    return name
+
+
+def _attach_where(choices):
+    pending = {}
+    for choice in choices:
+        if choice.get("where"):
+            continue
+        try:
+            cell = (round(float(choice["lat"]), 1), round(float(choice["lon"]), 1))
+        except (KeyError, TypeError, ValueError):
+            continue
+        pending.setdefault(cell, []).append(choice)
+    if not pending:
+        return
+
+    def _lookup(cell):
+        return cell, nearest_town(cell[0], cell[1])
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        found = list(pool.map(_lookup, list(pending)))
+    for cell, name in found:
+        if not name:
+            continue
+        for choice in pending[cell]:
+            choice["where"] = name
+
+
+def _by_distance(choices, lat, lon):
+    def _km(choice):
+        try:
+            return _kilometers(lat, lon, choice["lat"], choice["lon"])
+        except (KeyError, TypeError, ValueError):
+            return 1e9
+    return sorted(choices, key=_km)
 
 
 def search_trails(text, lat, lon):
@@ -488,7 +591,7 @@ def find_places(text, lat, lon):
     query = text.strip()
     if len(query) < 2 or len(query) > 60:
         return []
-    key = f"places:{query.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    key = f"places:4:{query.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
     cached = _recall(key)
     if cached is not None:
         return cached
@@ -502,7 +605,7 @@ def find_places(text, lat, lon):
         "namedetails": "1",
         "limit": "8",
         "viewbox": viewbox,
-        "bounded": "1",
+        "bounded": "0",
     })
     try:
         payload = _get(url)
@@ -534,11 +637,19 @@ def find_places(text, lat, lon):
         parts = [part.strip() for part in (hit.get("display_name") or "").split(",")]
         detail_parts = [part for part in parts[1:4] if part and part != label]
         detail = ", ".join(detail_parts) if detail_parts else addresstype.replace("_", " ").title()
-        kind = "peak" if addresstype == "peak" or (hit.get("type") or "").lower() == "peak" else "place"
+        hit_type = (hit.get("type") or "").lower()
+        if addresstype in {"peak", "mountain", "volcano"} or hit_type in {"peak", "mountain", "volcano"}:
+            kind = "peak"
+        elif addresstype in {"climbing", "climb"} or hit_type in {"climbing", "climb"}:
+            kind = "climb"
+        else:
+            kind = "place"
         places.append({
             "kind": kind,
+            "placeType": addresstype or hit_type or "place",
             "label": label,
             "detail": detail,
+            "where": _short_place(hit.get("address") or {}),
             "lat": hit_lat,
             "lon": hit_lon,
         })
@@ -546,14 +657,33 @@ def find_places(text, lat, lon):
     return places
 
 
-def search_map(text, lat, lon):
+def search_map(text, lat, lon, accept_language=""):
     query_text = text.strip()
     if len(query_text) < 2:
         return {"choices": []}
-    key = f"mapsearch:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    key = f"mapsearch:7:{_language_key(accept_language)}:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
     cached = _recall(key)
     if cached is not None:
         return cached
+    from survey.backend.outdoors import available, search_choices
+
+    if available():
+        try:
+            local_hits = search_choices(query_text, lat, lon, accept_language)
+        except Exception:
+            log.warning("local outdoors search failed", exc_info=True)
+            local_hits = None
+        if local_hits:
+            choices = []
+            seen = set()
+            for choice in local_hits:
+                _append_choice(choices, seen, choice)
+            for place in find_places(query_text, lat, lon):
+                _append_choice(choices, seen, place)
+            _attach_where(choices)
+            payload = {"choices": _by_distance(choices, lat, lon)}
+            _remember(key, payload, WEEK)
+            return payload
     choices = []
     seen = set()
 
@@ -590,15 +720,16 @@ def search_map(text, lat, lon):
         _append_choice(choices, seen, trail)
     for place in place_hits:
         _append_choice(choices, seen, place)
-    payload = {"choices": choices}
+    _attach_where(choices)
+    payload = {"choices": _by_distance(choices, lat, lon)}
     _remember(key, payload, WEEK)
     return payload
 
 
-def places_near(lat, lon, radius_km=14):
+def places_near(lat, lon, radius_km=14, accept_language=""):
     dlat = radius_km / 111
     dlon = radius_km / (111 * max(math.cos(math.radians(lat)), 0.2))
-    return map_view(lat - dlat, lon - dlon, lat + dlat, lon + dlon)
+    return map_view(lat - dlat, lon - dlon, lat + dlat, lon + dlon, accept_language)
 
 
 def find_town(text):

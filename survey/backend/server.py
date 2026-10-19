@@ -144,10 +144,14 @@ class PlaceIn(BaseModel):
     lon: float | None = None
 
 
+def _accept_language(request: Request):
+    return request.headers.get("accept-language", "")
+
+
 @app.get(f"{API_V1}/map")
-def map_places(south: float, west: float, north: float, east: float):
+def map_places(south: float, west: float, north: float, east: float, request: Request):
     try:
-        return map_view(south, west, north, east)
+        return map_view(south, west, north, east, _accept_language(request))
     except MapLookupFailed:
         raise HTTPException(
             status_code=503,
@@ -156,17 +160,17 @@ def map_places(south: float, west: float, north: float, east: float):
 
 
 @app.get(f"{API_V1}/map/search")
-def map_search(q: str, lat: float, lon: float):
+def map_search(q: str, lat: float, lon: float, request: Request):
     try:
-        return search_map(q, lat, lon)
+        return search_map(q, lat, lon, _accept_language(request))
     except MapLookupFailed:
         return {"choices": []}
 
 
 @app.get(f"{API_V1}/map/near")
-def map_near(lat: float, lon: float):
+def map_near(lat: float, lon: float, request: Request):
     try:
-        payload = places_near(lat, lon)
+        payload = places_near(lat, lon, accept_language=_accept_language(request))
     except MapLookupFailed:
         raise HTTPException(
             status_code=503,

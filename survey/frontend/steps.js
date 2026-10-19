@@ -28,6 +28,7 @@ function zone() {
 
 const canLeave = {
   start: () => true,
+  guide: () => true,
   trailhead: () => Boolean(currentVisit.trailhead),
   hikeStart: () => arrivalInRange(currentVisit.answers.hikeStart, zone()),
   stay: () => Boolean(currentVisit.answers.stay),
@@ -47,7 +48,8 @@ export function ready() {
 
 export function nextStep(force) {
   if (!force && !ready()) return null;
-  if (currentVisit.stepId === "start") return "map";
+  if (currentVisit.stepId === "start") return "guide";
+  if (currentVisit.stepId === "guide") return "map";
   const list = stepOrder();
   const index = list.indexOf(currentVisit.stepId);
   if (index < 0 || index === list.length - 1) return null;
@@ -55,7 +57,8 @@ export function nextStep(force) {
 }
 
 export function previousStep() {
-  if (currentVisit.stepId === "map") return "start";
+  if (currentVisit.stepId === "map") return "guide";
+  if (currentVisit.stepId === "guide") return "start";
   if (currentVisit.stepId === "hikeStart") return "map";
   const list = stepOrder();
   const index = list.indexOf(currentVisit.stepId);

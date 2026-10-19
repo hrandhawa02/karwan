@@ -46,6 +46,7 @@ a.brand:active,
 }
 
 .at-start main > .legal,
+.on-guide main > .legal,
 .on-map-step main > .legal {
   display: none;
 }

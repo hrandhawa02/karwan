@@ -1,4 +1,5 @@
 export { render as start } from "./start.js";
+export { render as guide } from "./guide.js";
 export { render as map } from "./map.js";
 export { render as trailhead } from "./trailhead.js";
 export { render as hikeStart } from "./hike-start.js";
