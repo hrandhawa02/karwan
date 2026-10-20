@@ -98,7 +98,7 @@ async function shareSurvey() {
     try {
       await navigator.share({
         title: "Karwan",
-        text: "One-minute trailhead lot note.",
+        text: "Quick trailhead lot update — help the next person plan their day.",
         url,
       });
       return;
@@ -136,8 +136,8 @@ function onClick(event) {
   if (event.target.id === "next") forward();
   if (event.target.id === "back") back();
   if (event.target.id === "save") saveVisit();
-  if (event.target.id === "download") downloadNote();
-  if (event.target.id === "share") shareSurvey();
+  if (event.target.closest("#download")) downloadNote();
+  if (event.target.closest("#share")) shareSurvey();
   if (event.target.id === "another") {
     resetAnswers();
     go("map");
