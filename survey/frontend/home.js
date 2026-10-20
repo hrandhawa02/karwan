@@ -1,4 +1,4 @@
-const FACTS = [
+const ALL_FACTS = [
   ["parking", "6.9 million", "Parking Lots", "Leave the car here."],
   ["hike", "173,000", "Hike Routes", "Set out from the lot."],
   ["bike", "83,000", "Bike Routes", "Unload and ride."],
@@ -10,6 +10,15 @@ const FACTS = [
   ["peak", "699,000", "Peaks", "Plan your approach."],
   ["range", "12,000", "Shooting Ranges", "Park for the range."],
   ["viewpoint", "92,000", "Viewpoints", "Stop for the view."],
+  ["beach", "51,000", "Beaches", "Park for the shore."],
+  ["picnic", "24,000", "Picnic Sites", "Tables near the lot."],
+  ["hot_spring", "4,000", "Hot Springs", "Soak after the drive."],
+  ["lift", "42,000", "Lifts", "Ride up from the base."],
+  ["ranger", "3,500", "Ranger Stations", "Stop for permits and info."],
+  ["boat", "11,000", "Boat Launches", "Put in from the lot."],
+  ["horse", "4,800", "Horse Trails", "Trailhead for riders."],
+  ["hut", "24,000", "Huts", "Park for the approach."],
+  ["cave", "52,000", "Caves", "Park for the entrance."],
 ];
 
 const MARK_INK = "#a34e22";
@@ -31,17 +40,43 @@ const MARKS = {
   peak: circle(`<path d="M5.5 20.5 11 9.2l3.2 5.4L18.2 8 22.5 20.5Z" fill="${MARK_INK}"/>`),
   range: circle(`<circle cx="14" cy="14" r="5.2" fill="none" stroke="${MARK_INK}" stroke-width="1.5"/><circle cx="14" cy="14" r="2.5" fill="none" stroke="${MARK_INK}" stroke-width="1.5"/><circle cx="14" cy="14" r="0.9" fill="${MARK_INK}"/>`),
   viewpoint: circle(`<circle cx="14" cy="14" r="3.3" fill="none" stroke="${MARK_INK}" stroke-width="1.7"/><circle cx="14" cy="14" r="1.15" fill="${MARK_INK}"/><path d="M14 6.8v2.3M14 18.9v2.3M6.8 14h2.3M18.9 14h2.3" stroke="${MARK_INK}" stroke-width="1.6" stroke-linecap="round"/>`),
+  beach: circle(`<path d="M5 19.5h18" stroke="${MARK_INK}" stroke-width="1.5" stroke-linecap="round"/><path d="M6.5 19.5c1.5-2.8 3.5-4.2 7.5-4.2s6 1.4 7.5 4.2" fill="none" stroke="${MARK_INK}" stroke-width="1.4" stroke-linecap="round"/>`),
+  picnic: circle(`<path d="M8 12h12M14 12V8.5M10.5 8.5h7" stroke="${MARK_INK}" stroke-width="1.5" stroke-linecap="round"/><path d="M9 12 7.5 19M19 12l1.5 7" stroke="${MARK_INK}" stroke-width="1.4" stroke-linecap="round"/>`),
+  hot_spring: circle(`<path d="M10 18c0-3 2-5.5 4-8 2 2.5 4 5 4 8" fill="none" stroke="${MARK_INK}" stroke-width="1.5" stroke-linecap="round"/>`),
+  lift: circle(`<path d="M8 20V10l6-4 6 4v10" fill="none" stroke="${MARK_INK}" stroke-width="1.5" stroke-linejoin="round"/><circle cx="14" cy="11" r="1.3" fill="${MARK_INK}"/>`),
+  ranger: circle(`<path d="M7 20V11l7-5 7 5v9" fill="none" stroke="${MARK_INK}" stroke-width="1.5" stroke-linejoin="round"/><rect x="11.5" y="14" width="5" height="6" rx=".5" fill="${MARK_INK}"/>`),
+  boat: circle(`<path d="M6 17h16l-2.5-4H8.5L6 17z" fill="${MARK_INK}"/>`),
+  horse: circle(`<circle cx="10" cy="11" r="1.5" fill="${MARK_INK}"/><path d="M10 12.5c1.5 2 3.5 3 6 3.5l-1 4.5H12l-.5-3" fill="none" stroke="${MARK_INK}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`),
+  hut: circle(`<path d="M6 19V12l8-6 8 6v7" fill="none" stroke="${MARK_INK}" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 19v-5h8v5" fill="${MARK_INK}"/>`),
+  cave: circle(`<path d="M7 20c0-6 3.5-10 7-10s7 4 7 10" fill="none" stroke="${MARK_INK}" stroke-width="1.6" stroke-linecap="round"/><circle cx="14" cy="15" r="2" fill="${MARK_INK}"/>`),
 };
 
+function shuffle(items) {
+  const out = items.slice();
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/** Parking always first, plus five random picks from the other place types (once per page load). */
+function pickVisitFacts() {
+  const parking = ALL_FACTS.find(([id]) => id === "parking");
+  const rest = ALL_FACTS.filter(([id]) => id !== "parking");
+  return [parking, ...shuffle(rest).slice(0, 5)];
+}
+
+const FACTS = pickVisitFacts();
+
 const rail = document.getElementById("sport-rail");
-const foot = document.querySelector(".sport-carousel-foot");
-const pauseBtn = document.getElementById("sport-carousel-pause");
-const fill = document.getElementById("sport-carousel-fill");
+const dots = document.getElementById("sport-dots");
+const prevBtn = document.querySelector(".sport-carousel-prev");
+const nextBtn = document.querySelector(".sport-carousel-next");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let index = 0;
 let timer = 0;
 let scrollTimer = 0;
-let paused = reduceMotion;
 
 FACTS.forEach(([id, count, label, line], item) => {
   const card = document.createElement("button");
@@ -60,14 +95,16 @@ FACTS.forEach(([id, count, label, line], item) => {
     arm(7000);
   });
   rail.append(card);
-});
 
-function paintPauseControl() {
-  if (!foot || !pauseBtn) return;
-  foot.classList.toggle("is-paused", paused);
-  pauseBtn.setAttribute("aria-pressed", paused ? "true" : "false");
-  pauseBtn.setAttribute("aria-label", paused ? "Resume auto-advance" : "Pause auto-advance");
-}
+  const dot = document.createElement("button");
+  dot.type = "button";
+  dot.setAttribute("aria-label", label);
+  dot.addEventListener("click", () => {
+    show(item);
+    arm(7000);
+  });
+  dots.append(dot);
+});
 
 function paint() {
   [...rail.children].forEach((card, item) => {
@@ -76,20 +113,23 @@ function paint() {
     card.tabIndex = on ? 0 : -1;
     card.setAttribute("aria-current", on ? "true" : "false");
   });
-  if (fill) {
-    const pct = ((index + 1) / FACTS.length) * 100;
-    fill.style.width = `${pct}%`;
-  }
-  paintPauseControl();
+  [...dots.children].forEach((dot, item) => {
+    const on = item === index;
+    dot.classList.toggle("is-on", on);
+    dot.setAttribute("aria-current", on ? "true" : "false");
+  });
+  const prev = FACTS[(index - 1 + FACTS.length) % FACTS.length];
+  const next = FACTS[(index + 1) % FACTS.length];
+  if (prevBtn) prevBtn.setAttribute("aria-label", `Previous: ${prev[2]}`);
+  if (nextBtn) nextBtn.setAttribute("aria-label", `Next: ${next[2]}`);
 }
 
 function show(next, smooth = true) {
   index = (next + FACTS.length) % FACTS.length;
   paint();
   const card = rail.children[index];
-  const left = card.offsetLeft - (rail.clientWidth - card.offsetWidth) / 2;
   rail.scrollTo({
-    left: Math.max(0, left),
+    left: card.offsetLeft,
     behavior: smooth && !reduceMotion ? "smooth" : "auto",
   });
 }
@@ -123,24 +163,20 @@ rail.addEventListener("scroll", () => {
 
 function arm(delay) {
   window.clearTimeout(timer);
-  if (reduceMotion || paused) return;
+  if (reduceMotion) return;
   timer = window.setTimeout(() => {
     show(index + 1);
     arm(4200);
   }, delay);
 }
 
-if (pauseBtn) {
-  pauseBtn.addEventListener("click", () => {
-    paused = !paused;
-    paintPauseControl();
-    if (paused) {
-      window.clearTimeout(timer);
-    } else {
-      arm(4200);
-    }
-  });
+function step(delta) {
+  show(index + delta);
+  arm(7000);
 }
+
+if (prevBtn) prevBtn.addEventListener("click", () => step(-1));
+if (nextBtn) nextBtn.addEventListener("click", () => step(1));
 
 show(0, false);
 if (!reduceMotion) arm(4200);
