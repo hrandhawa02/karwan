@@ -52,12 +52,14 @@ const MARKS = {
 };
 
 const rail = document.getElementById("sport-rail");
-const status = document.getElementById("sport-carousel-status");
+const foot = document.querySelector(".sport-carousel-foot");
+const pauseBtn = document.getElementById("sport-carousel-pause");
 const fill = document.getElementById("sport-carousel-fill");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let index = 0;
 let timer = 0;
 let scrollTimer = 0;
+let paused = reduceMotion;
 
 FACTS.forEach(([id, count, label, line], item) => {
   const card = document.createElement("button");
@@ -78,21 +80,25 @@ FACTS.forEach(([id, count, label, line], item) => {
   rail.append(card);
 });
 
+function paintPauseControl() {
+  if (!foot || !pauseBtn) return;
+  foot.classList.toggle("is-paused", paused);
+  pauseBtn.setAttribute("aria-pressed", paused ? "true" : "false");
+  pauseBtn.setAttribute("aria-label", paused ? "Resume auto-advance" : "Pause auto-advance");
+}
+
 function paint() {
-  const label = FACTS[index]?.[2] || "";
   [...rail.children].forEach((card, item) => {
     const on = item === index;
     card.classList.toggle("is-on", on);
     card.tabIndex = on ? 0 : -1;
     card.setAttribute("aria-current", on ? "true" : "false");
   });
-  if (status) {
-    status.textContent = `${index + 1} of ${FACTS.length} · ${label}`;
-  }
   if (fill) {
     const pct = ((index + 1) / FACTS.length) * 100;
     fill.style.width = `${pct}%`;
   }
+  paintPauseControl();
 }
 
 function show(next, smooth = true) {
@@ -135,12 +141,24 @@ rail.addEventListener("scroll", () => {
 
 function arm(delay) {
   window.clearTimeout(timer);
-  if (reduceMotion) return;
+  if (reduceMotion || paused) return;
   timer = window.setTimeout(() => {
     show(index + 1);
     arm(4200);
   }, delay);
 }
 
+if (pauseBtn) {
+  pauseBtn.addEventListener("click", () => {
+    paused = !paused;
+    paintPauseControl();
+    if (paused) {
+      window.clearTimeout(timer);
+    } else {
+      arm(4200);
+    }
+  });
+}
+
 show(0, false);
-arm(4200);
+if (!reduceMotion) arm(4200);

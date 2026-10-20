@@ -50,11 +50,26 @@
         <div class="home-sports">
           <div id="sport-rail" class="sport-rail" aria-roledescription="carousel" aria-label="Places on the map"></div>
         </div>
-        <div class="sport-carousel-foot" aria-hidden="false">
-          <div class="sport-carousel-track" aria-hidden="true">
-            <div id="sport-carousel-fill" class="sport-carousel-fill"></div>
+        <div class="sport-carousel-foot">
+          <div class="sport-carousel-controls">
+            <div class="sport-carousel-track" aria-hidden="true">
+              <div id="sport-carousel-fill" class="sport-carousel-fill"></div>
+            </div>
+            <button
+              type="button"
+              id="sport-carousel-pause"
+              class="sport-carousel-pause"
+              aria-label="Pause auto-advance"
+              aria-pressed="false"
+            >
+              <svg class="sport-carousel-icon sport-carousel-icon-pause" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M8 6h3v12H8V6zm5 0h3v12h-3V6z"/>
+              </svg>
+              <svg class="sport-carousel-icon sport-carousel-icon-play" viewBox="0 0 24 24" aria-hidden="true">
+                <path fill="currentColor" d="M9 7v10l8-5-8-5z"/>
+              </svg>
+            </button>
           </div>
-          <p id="sport-carousel-status" class="sport-carousel-status" aria-live="polite"></p>
         </div>
         <div class="amenities">
           <p class="amenities-label">Lot amenities</p>
@@ -91,6 +106,6 @@
       </p>
     </div>
   </main>
-  <script type="module" src="/survey/home.js?v=20261020b"></script>
+  <script type="module" src="/survey/home.js?v=20261020c"></script>
 </body>
 </html>
