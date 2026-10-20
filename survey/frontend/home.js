@@ -52,7 +52,8 @@ const MARKS = {
 };
 
 const rail = document.getElementById("sport-rail");
-const dots = document.getElementById("sport-dots");
+const status = document.getElementById("sport-carousel-status");
+const fill = document.getElementById("sport-carousel-fill");
 const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 let index = 0;
 let timer = 0;
@@ -75,29 +76,23 @@ FACTS.forEach(([id, count, label, line], item) => {
     arm(7000);
   });
   rail.append(card);
-
-  const dot = document.createElement("button");
-  dot.type = "button";
-  dot.setAttribute("aria-label", label);
-  dot.addEventListener("click", () => {
-    show(item);
-    arm(7000);
-  });
-  dots.append(dot);
 });
 
 function paint() {
+  const label = FACTS[index]?.[2] || "";
   [...rail.children].forEach((card, item) => {
     const on = item === index;
     card.classList.toggle("is-on", on);
     card.tabIndex = on ? 0 : -1;
     card.setAttribute("aria-current", on ? "true" : "false");
   });
-  [...dots.children].forEach((dot, item) => {
-    const on = item === index;
-    dot.classList.toggle("is-on", on);
-    dot.setAttribute("aria-current", on ? "true" : "false");
-  });
+  if (status) {
+    status.textContent = `${index + 1} of ${FACTS.length} · ${label}`;
+  }
+  if (fill) {
+    const pct = ((index + 1) / FACTS.length) * 100;
+    fill.style.width = `${pct}%`;
+  }
 }
 
 function show(next, smooth = true) {
