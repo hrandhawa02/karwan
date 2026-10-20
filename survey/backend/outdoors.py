@@ -13,7 +13,7 @@ from survey.backend.osm import (
     _kilometers,
 )
 
-DATA_DIR = Path.home() / "karwan-data"
+DATA_DIR = Path(__file__).resolve().parents[2] / "karwan-data"
 DB_PATH = Path(os.environ.get("OUTDOORS_DB", DATA_DIR / "outdoors.db"))
 
 NAME_KEYS = {
@@ -42,7 +42,7 @@ DETAIL = {
     "trailhead": "Trailhead",
     "hike": "Hike",
     "bike": "Bike",
-    "ski": "Ski",
+    "ski": "Snow",
     "climb": "Climb",
     "peak": "Peak",
     "camp": "Camp",
@@ -55,7 +55,7 @@ DETAIL = {
     "cave": "Cave",
     "hot_spring": "Hot spring",
     "horse": "Horse",
-    "run": "Run",
+    "foot": "Foot",
     "lift": "Ski lift",
     "ranger": "Ranger station",
     "range": "Range",
@@ -66,7 +66,7 @@ ACTIVITY_KINDS = (
     "bike",
     "ski",
     "climb",
-    "run",
+    "foot",
     "camp",
     "shelter",
     "peak",
@@ -116,11 +116,13 @@ def kind_of(tags):
     if tags.get("natural") == "peak":
         return "peak"
     route = tags.get("route")
-    if route in {"hiking", "foot"}:
+    if route == "foot":
+        return "foot"
+    if route == "hiking":
         return "hike"
     if route in {"bicycle", "mtb"}:
         return "bike"
-    if route == "ski" or tags.get("piste:type"):
+    if route == "ski" or tags.get("piste:type") or tags.get("sport") == "snowboarding":
         return "ski"
     if tags.get("sport") == "climbing" or tags.get("climbing") or tags.get("via_ferrata"):
         return "climb"
@@ -144,8 +146,6 @@ def kind_of(tags):
         return "hot_spring"
     if route == "horse":
         return "horse"
-    if route == "running":
-        return "run"
     if tags.get("aerialway"):
         return "lift"
     if tags.get("amenity") == "ranger_station":
@@ -253,6 +253,14 @@ def view_places(south, west, north, east, accept_language=""):
             east + pad_lon,
             MAP_KINDS,
         )
+        activity_anchor_rows = _rows_in_box(
+            conn,
+            south - pad_lat,
+            west - pad_lon,
+            north + pad_lat,
+            east + pad_lon,
+            ACTIVITY_KINDS,
+        )
         activity_rows = _rows_in_box(
             conn,
             south,
@@ -263,6 +271,11 @@ def view_places(south, west, north, east, accept_language=""):
         )
     pins = [_pin_from_row(row, accept_language) for row in rows]
     trailheads = [pin for pin in pins if pin["kind"] == "trailhead"]
+    route_anchors = []
+    for row in activity_anchor_rows:
+        anchor = _pin_from_row(row, accept_language)
+        if anchor["named"]:
+            route_anchors.append(anchor)
     kept = []
     for pin in pins:
         if pin["kind"] != "parking":
@@ -279,6 +292,13 @@ def view_places(south, west, north, east, accept_language=""):
             if trailhead["named"] and km < near_km:
                 near_km = km
                 near_trail = trailhead["name"]
+        for route in route_anchors:
+            km = _kilometers(pin["lat"], pin["lon"], route["lat"], route["lon"])
+            if km <= 0.45:
+                near_any = True
+            if km < near_km:
+                near_km = km
+                near_trail = route["name"]
         has_trail_name = bool(TRAIL_LOT_RE.search(pin["name"] or ""))
         has_park_agency = bool(PARK_AGENCY_RE.search(pin.get("operator") or ""))
         if not (near_any or has_trail_name or has_park_agency):

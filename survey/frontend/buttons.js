@@ -31,6 +31,22 @@ export function choices(field, options, selected) {
   return `<div class="choices">${buttons.join("")}</div>`;
 }
 
+export function sceneCards(field, cards, selected, multi) {
+  const buttons = cards.map(({ value, label, note, image }) => {
+    const on = multi ? selected.includes(value) : selected === value;
+    const role = multi ? "checkbox" : "radio";
+    return `<button type="button" class="park-card${on ? " selected" : ""}" data-field="${field}" data-value="${esc(value)}" role="${role}" aria-checked="${on}">
+      <span class="park-tick" aria-hidden="true"></span>
+      <span class="park-copy">
+        <span class="park-title">${esc(label)}</span>
+        <span class="park-note">${esc(note)}</span>
+      </span>
+      <span class="park-scene"><img src="${image}" alt=""></span>
+    </button>`;
+  });
+  return `<div class="park-cards">${buttons.join("")}</div>`;
+}
+
 export function checks(field, options, selected) {
   const buttons = options.map(([value, label]) => (
     choiceButton(field, value, label, selected, true)

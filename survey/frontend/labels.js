@@ -4,10 +4,10 @@ export const labels = {
     overnight: "Overnight",
   },
   carsWhere: {
-    spaces: "In the lot",
-    roadside: "On the street",
-    waiting: "Waiting for a spot",
-    left: "We left without a spot",
+    spaces: "Spaces in the lot",
+    roadside: "Cars on the street or shoulder",
+    waiting: "Cars waiting or circling",
+    left: "Someone left without a spot",
     didnt_look: "I didn’t look",
   },
   accessible: {

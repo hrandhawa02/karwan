@@ -8,6 +8,7 @@ const SEARCH_WIDE_SPAN_LON = 0.45;
 const TILE_URL = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
 const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
 const NO_P_NOTE = "I didn't find a lot in this area. Drop a pin to mark where you parked.";
+const ZOOM_IN_NOTE = "Zoom in to load parking and trails here.";
 const SUGGEST_EMPTY = "Nothing matched. Try a town, or coordinates like 47.49, -121.72.";
 const REGIONS = [
   { label: "North Bend", placeType: "town", lat: 47.4881, lon: -121.7237 },
@@ -22,20 +23,20 @@ const filters = {
   bike: false,
   ski: false,
   climb: false,
-  run: false,
+  foot: false,
   camp: false,
   shelter: false,
   peak: false,
   range: false,
   viewpoint: false,
 };
-const COUNTED_KINDS = new Set(["hike", "climb"]);
+const COUNTED_KINDS = new Set(Object.keys(filters));
 const ACTIVITY_FILTERS = [
   ["hike", "Hike"],
   ["bike", "Bike"],
-  ["ski", "Ski"],
+  ["ski", "Snow"],
   ["climb", "Climb"],
-  ["run", "Run"],
+  ["foot", "Walk"],
   ["camp", "Camp"],
   ["shelter", "Shelter"],
   ["peak", "Peak"],
@@ -59,7 +60,20 @@ let mapFrameObserver = null;
 let suggestTimer = null;
 let suggestToken = 0;
 let suggestQuery = "";
+let nameSuggestTimer = null;
+let nameSuggestToken = 0;
 let namingChoice = false;
+let namingFieldSuggest = false;
+const TRAIL_NAME_KINDS = new Set([
+  "trail",
+  "pin",
+  "hike",
+  "bike",
+  "foot",
+  "climb",
+  "peak",
+  "viewpoint",
+]);
 let suppressNoPNote = false;
 let dismissedGuide = "";
 let toastRole = "";
@@ -100,7 +114,7 @@ function markHtml(kind, count = 0, selected = false, community = false) {
     const fill = selected ? "#a34e22" : "#0b7a56";
     return `<svg class="mark mark-trail" viewBox="0 0 28 28" aria-hidden="true">
       <circle cx="14" cy="14" r="12.5" fill="${fill}" stroke="#ffffff" stroke-width="2.5"/>
-      <path d="M6.4 18.6c2.2-3.6 3.4-3.6 5.4 0s3.2 3.6 5.4 0 3-3.6 4.4 0" fill="none" stroke="#ffffff" stroke-width="1.8" stroke-linecap="round"/>
+      ${HIKE_BOOT_SVG("#fff")}
     </svg>`;
   }
   if (kind === "lot") {
@@ -124,8 +138,15 @@ function keyCircle(fill, inner) {
   return `<svg class="mark key-mark" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="${fill}"/>${inner}</svg>`;
 }
 
+/** Twemoji 1f97e boot outline, scaled for 28×28 marks (single-color silhouette). */
+function HIKE_BOOT_SVG(fill) {
+  return `<g transform="translate(5.1 2.6) scale(0.585) rotate(-5 18 18)"><path fill="${fill}" d="M34.469 28.156c-.59-.885-2.458-2.365-4.5-2.656-2.112-.302-3.877.18-6.571-1.394-.086-.066-.171-.131-.273-.19-2.153-1.247-5.917-5.417-6-9.542-.047-2.336-3-2.625-5.375-2.333-2.375.292-10.083 2.083-9.792 3.25.248.991.224 5.316-.018 8.205-.366 2.27-.636 5.435-.636 7.44C1.303 31.599 2.333 32 2.333 32l14.198.5 17.688-.477s.933-.084.906-.711c-.042-.958-.156-2.406-.656-3.156z"/><path fill="${fill}" d="M1.334 31.216c.787.175 2.201.662 4.591.7 2.755.044 5.187-.525 8.308-.525 2.991 0 6.9.848 10.319.7 3.487-.152 7.35-.652 8.192-.799 1.667-.292 2.438-.479 2.438-.479s.365-.021.531.688c.167.708.304 2.083-.841 2.427-2.186.656-7.554 1.113-12.724 1.049-2.626-.032-5.549-.81-6.966-.976-1.417-.167-2.667-.287-3.062 0-.396.287.089.792-.946.933-2.58.35-8.614.044-9.928-.516-.672-.286-1.051-3.455.088-3.202z"/></g>`;
+}
+
+const WALK_PERSON_MARK = `<circle cx="14" cy="8.4" r="2.05" fill="#fff"/><path d="M14 10.6v4.6M14 13l-3.2 5.2M14 13l4.2 4.8M14 11.6l-2.9 2.1M14 11.6l3.1 1.7" fill="none" stroke="#fff" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>`;
+
 function activityMark(id) {
-  if (id === "hike") return markHtml("trail");
+  if (id === "hike") return keyCircle("#0b7a56", HIKE_BOOT_SVG("#fff"));
   if (id === "bike") {
     return keyCircle(
       "#1a7aa8",
@@ -135,15 +156,12 @@ function activityMark(id) {
   if (id === "ski") {
     return keyCircle(
       "#3e6f96",
-      `<path d="M10 7.5c2.4 5.2 2.2 7.4-.2 13M17.2 7.5c2.4 5.2 2.2 7.4-.2 13" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round"/>`,
+      `<path d="M9.8 7.8v12.8" fill="none" stroke="#fff" stroke-width="1.35" stroke-linecap="round"/><path d="M17.6 8.2v12.2" fill="none" stroke="#fff" stroke-width="2.35" stroke-linecap="round"/>`,
     );
   }
   if (id === "climb") return placeMark("climb");
-  if (id === "run") {
-    return keyCircle(
-      "#c4526a",
-      `<circle cx="15.2" cy="8.2" r="2" fill="#fff"/><path d="M14.6 11.2 11.4 16.2l-3.2 1.6M14.2 12.4l3.4 1.4 1.8 4.4M10.8 16.2 14.2 21" fill="none" stroke="#fff" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/>`,
-    );
+  if (id === "foot") {
+    return keyCircle("#8a6244", WALK_PERSON_MARK);
   }
   if (id === "camp") {
     return keyCircle(
@@ -292,9 +310,19 @@ function parkingInView(list) {
   return (list || []).some((pin) => pin.kind === "parking" && bounds.contains([pin.lat, pin.lon]));
 }
 
-function showAreaGuide(list) {
+function parkingNearPoint(list, lat, lon, maxM = 650) {
+  if (!map) return parkingIn(list);
+  return (list || []).some(
+    (pin) => pin.kind === "parking"
+      && map.distance([lat, lon], [pin.lat, pin.lon]) <= maxM,
+  );
+}
+
+function showAreaGuide(list, lat, lon) {
   if (userMarkedSpot()) return;
-  const lots = map ? parkingInView(list) : parkingIn(list);
+  const lots = map
+    ? (parkingInView(list) || (lat != null && lon != null && parkingNearPoint(list, lat, lon)))
+    : parkingIn(list);
   if (!lots) {
     showToast(NO_P_NOTE, "is-warn", "guide");
     return;
@@ -329,6 +357,15 @@ function lotConfirmNote(state) {
     return "Tap Continue if this is the right lot.";
   }
   const name = state.pin.name || "this lot";
+  if (state.snapped) {
+    if (state.mode === "unnamed") {
+      return "This is so close to a lot we already have that we'll use that one. It has no name, so tap Continue to label it.";
+    }
+    if (state.pin.name) {
+      return `This is so close to ${state.pin.name} that we'll use that lot.`;
+    }
+    return "This is so close to a lot we already have that we'll use that one.";
+  }
   if (state.mode === "unnamed") {
     return "This lot has no name on the map. Tap Continue to label it, or tap another blue P.";
   }
@@ -348,31 +385,32 @@ function hasLotSelection() {
   );
 }
 
+function nearestParkingPins(near, choice, limit = 8) {
+  return (near || [])
+    .filter((pin) => pin.kind === "parking")
+    .map((pin) => ({
+      pin,
+      d: map.distance([choice.lat, choice.lon], [pin.lat, pin.lon]),
+    }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, limit)
+    .map(({ pin }) => pin);
+}
+
 function frameSearchArea(choice, near) {
   if (!map) return;
   const anchorZoom = choice.kind === "place" ? SEARCH_MIN_ZOOM : 15;
-  if (near.length === 0) {
-    map.setView([choice.lat, choice.lon], anchorZoom);
-    return;
-  }
-  const bounds = window.L.latLngBounds([
+  const parking = nearestParkingPins(near, choice);
+  const points = [
     [choice.lat, choice.lon],
-    ...near.map((pin) => [pin.lat, pin.lon]),
-  ]);
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const spanLat = ne.lat - sw.lat;
-  const spanLon = ne.lng - sw.lng;
-  const spread =
-    near.length > 12
-    || spanLat > SEARCH_WIDE_SPAN_LAT
-    || spanLon > SEARCH_WIDE_SPAN_LON;
-  if (spread) {
+    ...parking.map((pin) => [pin.lat, pin.lon]),
+  ];
+  if (points.length === 1) {
     map.setView([choice.lat, choice.lon], anchorZoom);
     return;
   }
-  map.fitBounds(bounds, {
-    padding: [36, 36],
+  map.fitBounds(window.L.latLngBounds(points), {
+    padding: [48, 48],
     maxZoom: 16,
     minZoom: SEARCH_MIN_ZOOM,
   });
@@ -424,18 +462,19 @@ async function applySearchChoice(choice) {
       mergePins(near);
       frameSearchArea(choice, near);
       drawPins(mergePins([]));
+      await loadPins(true);
       clearWait();
-      showAreaGuide(near);
+      showAreaGuide(loaded.length ? loaded : near, choice.lat, choice.lon);
     } else {
       frameSearchArea(choice, []);
       await loadPins(true);
-      showAreaGuide(loaded);
+      showAreaGuide(loaded, choice.lat, choice.lon);
     }
   } catch (_err) {
     clearWait();
     frameSearchArea(choice, []);
     await loadPins(true);
-    showAreaGuide(loaded);
+    showAreaGuide(loaded, choice.lat, choice.lon);
   }
 }
 
@@ -652,10 +691,6 @@ function sheet(state) {
     card.classList.toggle("map-sheet-compact", state?.mode === "name");
     card.classList.toggle("map-sheet-lot", lotPicked);
   }
-  const pinBtn = document.getElementById("drop-pin-btn");
-  if (pinBtn) {
-    pinBtn.hidden = enabled;
-  }
   setContinue(enabled);
   if (state?.mode === "name") {
     showPlacedPinBanner();
@@ -707,7 +742,9 @@ function showNameStep() {
     nameStep.classList.remove("step-in");
     void nameStep.offsetWidth;
     nameStep.classList.add("step-in");
+    const focusField = namingPlace ? "place" : "trail";
     (namingPlace ? placeInput : trailInput)?.focus();
+    queueNameSuggest(focusField, (namingPlace ? placeInput : trailInput)?.value?.trim() || "");
   }, 180);
   setNameReady(canContinue(chosen));
 }
@@ -727,6 +764,27 @@ function hideNameStep() {
     mapStep.classList.add("step-in");
     map?.invalidateSize();
   }, 160);
+}
+
+function closestLot(latlng, maxMeters) {
+  let best = null;
+  let bestMeters = maxMeters;
+  for (const pin of loaded) {
+    if (pin.kind !== "parking") continue;
+    const meters = map.distance(latlng, [pin.lat, pin.lon]);
+    if (meters < bestMeters) {
+      bestMeters = meters;
+      best = pin;
+    }
+  }
+  return best;
+}
+
+function useNearbyLot(pin) {
+  selectPin(pin);
+  if (!chosen || (chosen.mode !== "pin" && chosen.mode !== "unnamed")) return;
+  chosen.snapped = true;
+  sheet(chosen);
 }
 
 function closestPin(latlng, maxMeters = 120) {
@@ -765,7 +823,13 @@ function knownTrail(lat, lon, pin) {
   let best = null;
   let bestMeters = 800;
   for (const other of loaded) {
-    if (other.kind !== "trailhead" || !other.named || !other.name) continue;
+    if (!other.name || other.kind === "parking") continue;
+    const trailLike =
+      other.kind === "trailhead"
+      || isActivityPin(other)
+      || other.kind === "peak"
+      || other.kind === "viewpoint";
+    if (!trailLike) continue;
     const meters = map.distance([lat, lon], [other.lat, other.lon]);
     if (meters < bestMeters) {
       bestMeters = meters;
@@ -773,6 +837,220 @@ function knownTrail(lat, lon, pin) {
     }
   }
   return best;
+}
+
+function nearbyNamedFeatures(lat, lon, maxM = 1000) {
+  if (!map) return [];
+  const out = [];
+  const seen = new Set();
+  for (const pin of loaded) {
+    const name = String(pin.name || "").trim();
+    if (!name || pin.kind === "parking") continue;
+    const meters = map.distance([lat, lon], [pin.lat, pin.lon]);
+    if (meters > maxM) continue;
+    const key = name.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, kind: pin.kind, meters, pin });
+  }
+  out.sort((a, b) => a.meters - b.meters);
+  return out;
+}
+
+function featureHint(kind) {
+  if (kind === "trailhead") return "Trailhead";
+  if (kind in filters) return ACTIVITY_FILTERS.find(([id]) => id === kind)?.[1] || "Trail";
+  if (kind === "peak") return "Peak";
+  if (kind === "viewpoint") return "Viewpoint";
+  return "Nearby";
+}
+
+function featureMark(kind) {
+  if (kind === "trailhead") return markHtml("trail");
+  if (kind in filters) return activityMark(kind);
+  if (kind === "peak" || kind === "viewpoint") return activityMark(kind === "peak" ? "peak" : "viewpoint");
+  return markHtml("lot");
+}
+
+function nameFieldNodes(field) {
+  const panel = document.getElementById(field === "place" ? "place-suggest" : "trail-suggest");
+  const list = document.getElementById(field === "place" ? "place-suggest-list" : "trail-suggest-list");
+  const input = document.getElementById(field === "place" ? "place-name" : "trail-name");
+  return { panel, list, input };
+}
+
+function applyNameValue(field, value) {
+  if (!chosen) return;
+  namingFieldSuggest = true;
+  const text = String(value || "").trim();
+  const { input } = nameFieldNodes(field);
+  if (field === "place") {
+    chosen.typed = text;
+    if (input) input.value = text;
+  } else {
+    chosen.trailTyped = text;
+    if (input) input.value = text;
+  }
+  namingFieldSuggest = false;
+  hideNameSuggest(field);
+  setNameReady(canContinue(chosen));
+}
+
+function hideNameSuggest(field) {
+  if (field) {
+    const { panel, list, input } = nameFieldNodes(field);
+    hideSuggestPanel(panel, list, input);
+    return;
+  }
+  hideNameSuggest("place");
+  hideNameSuggest("trail");
+}
+
+function fillSuggestList(list, rows, emptyText) {
+  list.replaceChildren();
+  if (rows.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "suggest-label";
+    empty.textContent = emptyText;
+    list.append(empty);
+  } else {
+    for (const row of rows) list.append(row);
+  }
+}
+
+function openSuggestPanel(panel, list, input, rows, emptyText = SUGGEST_EMPTY) {
+  if (!panel || !list) return;
+  fillSuggestList(list, rows, emptyText);
+  panel.hidden = false;
+  input?.setAttribute("aria-expanded", "true");
+}
+
+function hideSuggestPanel(panel, list, input) {
+  if (panel) panel.hidden = true;
+  input?.setAttribute("aria-expanded", "false");
+}
+
+function matchesNameQuery(label, query) {
+  const q = query.trim().toLowerCase();
+  if (!q) return true;
+  return label.toLowerCase().includes(q);
+}
+
+function lotNearLabel(name) {
+  const rest = String(name || "").trim();
+  return rest ? `Lot near ${rest}` : "";
+}
+
+function buildLotNameRows(query) {
+  const rows = [];
+  const seen = new Set();
+  const pin = chosen?.pin;
+  if (!pin || !map) return rows;
+  const add = (label, hint, iconHtml) => {
+    const clean = String(label || "").trim();
+    if (!clean || !matchesNameQuery(clean, query)) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(suggestRow(clean, hint, iconHtml, () => applyNameValue("place", clean)));
+  };
+  if (chosen.trailName) {
+    add(lotNearLabel(chosen.trailName), "Suggested", markHtml("lot"));
+  }
+  for (const feat of nearbyNamedFeatures(pin.lat, pin.lon, 1200).slice(0, 10)) {
+    add(lotNearLabel(feat.name), featureHint(feat.kind), featureMark(feat.kind));
+  }
+  return rows;
+}
+
+function buildTrailNameRows(query) {
+  const rows = [];
+  const seen = new Set();
+  const pin = chosen?.pin;
+  if (!pin || !map) return rows;
+  const add = (label, hint, iconHtml) => {
+    const clean = String(label || "").trim();
+    if (!clean || !matchesNameQuery(clean, query)) return;
+    const key = clean.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    rows.push(suggestRow(clean, hint, iconHtml, () => applyNameValue("trail", clean)));
+  };
+  if (chosen.trailName) {
+    add(chosen.trailName, "Suggested", markHtml("trail"));
+  }
+  for (const feat of nearbyNamedFeatures(pin.lat, pin.lon, 1500)) {
+    if (feat.kind === "parking") continue;
+    add(feat.name, featureHint(feat.kind), featureMark(feat.kind));
+    if (rows.length >= 12) break;
+  }
+  return rows;
+}
+
+function mergeNameSearchRows(field, query, choices) {
+  const rows = field === "place" ? buildLotNameRows(query) : buildTrailNameRows(query);
+  const seen = new Set();
+  for (const row of rows) {
+    const label = row.querySelector(".suggest-name")?.textContent?.trim().toLowerCase();
+    if (label) seen.add(label);
+  }
+  const pin = chosen?.pin;
+  const center = pin ? window.L.latLng(pin.lat, pin.lon) : map?.getCenter();
+  const ranked = [...choices].sort((a, b) => {
+    if (!center || !map) return choiceRank(a) - choiceRank(b);
+    return map.distance(center, [a.lat, a.lon]) - map.distance(center, [b.lat, b.lon]);
+  });
+  for (const choice of ranked) {
+    if (field === "trail" && !TRAIL_NAME_KINDS.has(choice.kind)) continue;
+    const label = String(choice.label || "").trim();
+    if (!label || !matchesNameQuery(label, query)) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    rows.push(suggestRow(
+      label,
+      choiceHint(choice),
+      choiceMark(choice),
+      () => applyNameValue(field, label),
+      choiceWhere(choice),
+      choice.detail,
+    ));
+    if (rows.length >= 10) break;
+  }
+  return rows;
+}
+
+function queueNameSuggest(field, text) {
+  clearTimeout(nameSuggestTimer);
+  const token = ++nameSuggestToken;
+  const { panel, list, input } = nameFieldNodes(field);
+  if (!panel || !list || !input) return;
+  const query = text.trim();
+  if (query.length < 2) {
+    openSuggestPanel(panel, list, input, field === "place" ? buildLotNameRows(query) : buildTrailNameRows(query), "Type to search trails and places");
+    return;
+  }
+  openSuggestPanel(panel, list, input, mergeNameSearchRows(field, query, []), "Searching…");
+  nameSuggestTimer = setTimeout(async () => {
+    try {
+      const pin = chosen?.pin;
+      const lat = pin?.lat ?? map.getCenter().lat;
+      const lon = pin?.lon ?? map.getCenter().lng;
+      const payload = await searchMap(query, lat, lon);
+      if (token !== nameSuggestToken) return;
+      const { input: liveInput } = nameFieldNodes(field);
+      if (!liveInput || liveInput.value.trim() !== query) return;
+      openSuggestPanel(
+        panel,
+        list,
+        liveInput,
+        mergeNameSearchRows(field, query, payload.choices || []),
+      );
+    } catch (_err) {
+      if (token !== nameSuggestToken) return;
+      openSuggestPanel(panel, list, input, mergeNameSearchRows(field, query, []));
+    }
+  }, 250);
 }
 
 function showTrailField(state) {
@@ -907,7 +1185,7 @@ function groupPins(places) {
 }
 
 function hikeMountain() {
-  return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#0b7a56"/><path d="M5.5 20.5 11 9.2l3.2 5.4L18.2 8 22.5 20.5Z" fill="#fff"/></svg>`;
+  return `<svg class="mark mark-place" viewBox="0 0 28 28" aria-hidden="true"><circle cx="14" cy="14" r="12.5" fill="#0b7a56"/>${HIKE_BOOT_SVG("#fff")}</svg>`;
 }
 
 function activityIcon(kind) {
@@ -1059,7 +1337,7 @@ async function loadPins(keepNote = false) {
       }
       if (!keepNote) {
         if (userMarkedSpot()) restoreSelectionNote();
-        else offerGuide(NO_P_NOTE);
+        else showToast(ZOOM_IN_NOTE, "is-warn", "guide");
       } else if (toastText === "Searching…") {
         clearToast("wait");
       }
@@ -1098,10 +1376,9 @@ async function loadPins(keepNote = false) {
 
 function dropAt(lat, lon) {
   const latlng = window.L.latLng(lat, lon);
-  // If an existing OpenStreetMap pin is right at this spot (< 100 m), stick with it!
-  const existing = closestPin(latlng, 100);
-  if (existing && existing.named) {
-    selectPin(existing);
+  const existing = closestLot(latlng, 100);
+  if (existing) {
+    useNearbyLot(existing);
     return;
   }
   droppingMode = false;
@@ -1117,8 +1394,13 @@ function dropAt(lat, lon) {
     zIndexOffset: 400,
   }).addTo(map);
   dropped.on("dragend", () => {
+    const pos = dropped.getLatLng();
+    const near = closestLot(pos, 100);
+    if (near) {
+      useNearbyLot(near);
+      return;
+    }
     if (chosen && chosen.mode === "name") {
-      const pos = dropped.getLatLng();
       chosen.lat = pos.lat;
       chosen.lon = pos.lng;
       chosen.trailName = knownTrail(pos.lat, pos.lng, null);
@@ -1310,8 +1592,8 @@ const PLACE_WORDS = {
   region: "Region",
   administrative: "Region",
   climb: "Climb",
-  ski: "Ski",
-  piste: "Ski",
+  ski: "Snow",
+  piste: "Snow",
   path: "Trail",
   track: "Trail",
   footway: "Trail",
@@ -1420,9 +1702,8 @@ function hideSuggest() {
   const panel = document.getElementById("map-suggest");
   const shade = document.getElementById("suggest-shade");
   const input = document.getElementById("search-input");
-  if (panel) panel.hidden = true;
+  hideSuggestPanel(panel, document.getElementById("map-suggest-list"), input);
   if (shade) shade.hidden = true;
-  input?.setAttribute("aria-expanded", "false");
   document.getElementById("map-step")?.classList.remove("suggest-open");
 }
 
@@ -1436,20 +1717,9 @@ function openSuggest(rows, emptyText = SUGGEST_EMPTY) {
   const panel = document.getElementById("map-suggest");
   const list = document.getElementById("map-suggest-list");
   const input = document.getElementById("search-input");
-  if (!panel || !list) return;
-  list.replaceChildren();
-  if (rows.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "suggest-label";
-    empty.textContent = emptyText;
-    list.append(empty);
-  } else {
-    for (const row of rows) list.append(row);
-  }
-  panel.hidden = false;
+  openSuggestPanel(panel, list, input, rows, emptyText);
   const shade = document.getElementById("suggest-shade");
   if (shade) shade.hidden = false;
-  input?.setAttribute("aria-expanded", "true");
   document.getElementById("map-step")?.classList.add("suggest-open");
 }
 
@@ -1552,6 +1822,17 @@ function activityCount(kind) {
   return count;
 }
 
+function syncFilterScrollHint() {
+  const list = document.getElementById("map-filters");
+  const wrap = list?.closest(".map-filters-scroll");
+  if (!list || !wrap) return;
+  const canScroll = list.scrollWidth > list.clientWidth + 2;
+  const atStart = list.scrollLeft <= 6;
+  const atEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 6;
+  wrap.classList.toggle("has-more-end", canScroll && !atEnd);
+  wrap.classList.toggle("has-more-start", canScroll && !atStart);
+}
+
 function syncFilterPills() {
   document.querySelectorAll("[data-filter]").forEach((btn) => {
     const key = btn.dataset.filter;
@@ -1561,20 +1842,15 @@ function syncFilterPills() {
     const word = btn.querySelector(".filter-word");
     const label = word ? word.textContent.trim() : key;
     const count = activityCount(key);
-    let badge = btn.querySelector(".filter-count");
-    if (count > 0) {
-      if (!badge && word) {
-        badge = document.createElement("span");
-        badge.className = "filter-count";
-        word.after(badge);
-      }
-      if (badge) badge.textContent = String(count);
-    } else if (badge) {
-      badge.remove();
+    const badge = btn.querySelector(".filter-count");
+    if (badge) {
+      badge.textContent = count > 0 ? String(count) : "";
+      badge.setAttribute("aria-hidden", count > 0 ? "false" : "true");
     }
     const named = count > 0 ? `${label}, ${count} in view` : label;
     btn.setAttribute("aria-label", on ? `Turn off ${named}` : named);
   });
+  syncFilterScrollHint();
 }
 
 function toggleFilter(key) {
@@ -1598,7 +1874,7 @@ export function render() {
     const on = filters[id] ? " is-on" : "";
     const pressed = filters[id] ? "true" : "false";
     const name = on ? `Turn off ${label}` : label;
-    return `<button type="button" class="filter-pill${on}" data-filter="${id}" aria-pressed="${pressed}" aria-label="${name}">${activityMark(id)}<span class="filter-line"><span class="filter-word">${label}</span></span></button>`;
+    return `<button type="button" class="filter-pill${on}" data-filter="${id}" aria-pressed="${pressed}" aria-label="${name}">${activityMark(id)}<span class="filter-line"><span class="filter-word">${label}</span><span class="filter-count" aria-hidden="true"></span></span></button>`;
   }).join("");
   return `
     <div id="map-step">
@@ -1612,7 +1888,11 @@ export function render() {
           <div id="map-suggest-list"></div>
         </div>
       </div>
-      <div class="map-filters" aria-label="Activities">${activities}</div>
+      <div class="map-filters-scroll">
+        <span class="map-filters-back" aria-hidden="true">‹</span>
+        <div id="map-filters" class="map-filters" aria-label="Activities">${activities}</div>
+        <span class="map-filters-more" aria-hidden="true">›</span>
+      </div>
     </div>
     <div class="map-frame">
       <div id="visit-map" class="map-canvas"></div>
@@ -1644,11 +1924,21 @@ export function render() {
       <p id="name-hint" class="hint"></p>
       <div id="name-entry" class="name-entry">
         <label id="name-label" class="field-label" for="place-name">Lot name</label>
-        <input id="place-name" type="text" maxlength="100" autocomplete="off" placeholder="e.g. main lot or overflow lot">
+        <div class="name-field-wrap">
+          <input id="place-name" type="text" maxlength="100" autocomplete="off" placeholder="e.g. main lot or overflow lot" role="combobox" aria-expanded="false" aria-controls="place-suggest">
+          <div id="place-suggest" class="map-suggest name-suggest" hidden>
+            <div id="place-suggest-list"></div>
+          </div>
+        </div>
       </div>
       <div id="trail-entry" class="name-entry" hidden>
         <label class="field-label" for="trail-name">Which trail is this for?</label>
-        <input id="trail-name" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Mount Si">
+        <div class="name-field-wrap">
+          <input id="trail-name" type="text" maxlength="80" autocomplete="off" placeholder="e.g. Mount Si" role="combobox" aria-expanded="false" aria-controls="trail-suggest">
+          <div id="trail-suggest" class="map-suggest name-suggest" hidden>
+            <div id="trail-suggest-list"></div>
+          </div>
+        </div>
       </div>
       <div class="actions">
         <button type="button" class="back" id="name-back">Back to map</button>
@@ -1661,6 +1951,8 @@ export function render() {
 export function destroyMap() {
   clearTimeout(moveTimer);
   clearTimeout(suggestTimer);
+  clearTimeout(nameSuggestTimer);
+  hideNameSuggest();
   if (mapResizeHandler) {
     window.removeEventListener("resize", mapResizeHandler);
     mapResizeHandler = null;
@@ -1752,8 +2044,11 @@ export function mountMap(_root, go) {
 
   mapResizeHandler = () => {
     fitMap();
+    syncFilterScrollHint();
   };
   window.addEventListener("resize", mapResizeHandler);
+
+  document.getElementById("map-filters")?.addEventListener("scroll", syncFilterScrollHint, { passive: true });
 
   const mapFrameEl = document.querySelector(".map-frame");
   if (mapFrameEl && typeof ResizeObserver !== "undefined") {
@@ -1766,6 +2061,7 @@ export function mountMap(_root, go) {
   document.getElementById("suggest-shade")?.addEventListener("click", () => hideSuggest());
 
   document.getElementById("search-input").addEventListener("focus", () => {
+    window.scrollTo(0, 0);
     if (namingChoice) return;
     const input = document.getElementById("search-input");
     const text = input.value.trim();
@@ -1781,6 +2077,7 @@ export function mountMap(_root, go) {
   });
   document.addEventListener("click", (event) => {
     if (!event.target.closest(".map-search-wrap")) hideSuggest();
+    if (!event.target.closest(".name-field-wrap")) hideNameSuggest();
   });
   document.querySelectorAll("[data-filter]").forEach((btn) => {
     btn.addEventListener("click", () => toggleFilter(btn.dataset.filter));
@@ -1798,6 +2095,7 @@ export function mountMap(_root, go) {
     if (event.key !== "Escape") return;
     const modal = document.getElementById("search-choices-modal");
     if (modal && !modal.hidden) clearSearchChoices();
+    else if (!document.getElementById("name-step")?.hidden) hideNameSuggest();
     else hideSuggest();
   });
 
@@ -1812,16 +2110,26 @@ export function mountMap(_root, go) {
     sheet(chosen);
   });
 
+  document.getElementById("place-name").addEventListener("focus", () => {
+    if (!chosen || chosen.mode === "pin") return;
+    queueNameSuggest("place", document.getElementById("place-name").value.trim());
+  });
   document.getElementById("place-name").addEventListener("input", (event) => {
     if (!chosen || chosen.mode === "pin") return;
-    chosen.typed = event.target.value;
+    if (!namingFieldSuggest) chosen.typed = event.target.value;
     setNameReady(canContinue(chosen));
+    queueNameSuggest("place", event.target.value.trim());
   });
 
+  document.getElementById("trail-name").addEventListener("focus", () => {
+    if (!chosen?.askTrail) return;
+    queueNameSuggest("trail", document.getElementById("trail-name").value.trim());
+  });
   document.getElementById("trail-name").addEventListener("input", (event) => {
     if (!chosen) return;
-    chosen.trailTyped = event.target.value;
+    if (!namingFieldSuggest) chosen.trailTyped = event.target.value;
     setNameReady(canContinue(chosen));
+    queueNameSuggest("trail", event.target.value.trim());
   });
 
   document.getElementById("map-next").addEventListener("click", () => {
@@ -1832,7 +2140,10 @@ export function mountMap(_root, go) {
     }
     showNameStep();
   });
-  document.getElementById("name-back").addEventListener("click", hideNameStep);
+  document.getElementById("name-back").addEventListener("click", () => {
+    hideNameSuggest();
+    hideNameStep();
+  });
   document.getElementById("name-next").addEventListener("click", () => usePlace(go));
 
   requestAnimationFrame(() => {
@@ -1843,4 +2154,5 @@ export function mountMap(_root, go) {
   syncDropButton();
   sheet(null);
   loadPins();
+  requestAnimationFrame(syncFilterScrollHint);
 }

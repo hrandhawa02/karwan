@@ -7,9 +7,11 @@ function bathroomSummary() {
   const answers = currentVisit.answers;
   if (answers.bathroomExists === "no") return "No";
   if (answers.bathroomExists === "didnt_check") return "I didn’t look";
-  const condition = labels.condition[answers.bathroomCondition];
-  if (condition === "OK") return "Yes, OK";
-  return `Yes, ${condition.toLowerCase()}`;
+  return String(answers.bathroomCondition || "")
+    .split(",")
+    .filter(Boolean)
+    .map((value) => labels.condition[value])
+    .join(", ");
 }
 
 function paySummary() {

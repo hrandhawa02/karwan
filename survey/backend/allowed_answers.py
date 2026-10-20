@@ -102,9 +102,12 @@ def check_bathroom(exists: str | None, condition: str | None):
     if exists not in BATH_EXISTS:
         bad("Choose whether there were bathrooms.")
     if exists == "yes":
-        if condition not in BATH_COND:
+        parts = [part.strip() for part in (condition or "").split(",") if part.strip()]
+        if not parts or any(part not in BATH_COND for part in parts):
             bad("Choose the bathroom condition.")
-        return exists, condition
+        if len(parts) != len(set(parts)):
+            bad("Choose each bathroom answer once.")
+        return exists, ",".join(sorted(parts))
     if condition is not None:
         bad("Bathroom condition is only kept when bathrooms were there.")
     return exists, None

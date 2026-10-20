@@ -208,6 +208,61 @@ def _pin(element):
     }
 
 
+def _route_anchors(elements):
+    anchors = []
+    for element in elements:
+        tags = element.get("tags") or {}
+        if tags.get("route") not in {"hiking", "foot", "bicycle"}:
+            continue
+        point = _point(element)
+        name = _label(tags)
+        if point is None or not name:
+            continue
+        anchors.append({
+            "lat": point[0],
+            "lon": point[1],
+            "name": name,
+            "named": True,
+        })
+    return anchors
+
+
+def _keep_trail_parking_lots(lots, trailheads, route_anchors):
+    kept = []
+    for lot in lots:
+        near_trail = None
+        near_any = False
+        near_km = 0.45
+        for th in trailheads:
+            km = _kilometers(lot["lat"], lot["lon"], th["lat"], th["lon"])
+            if km <= 0.45:
+                near_any = True
+            if th["named"] and km < near_km:
+                near_km = km
+                near_trail = th["name"]
+        for route in route_anchors:
+            km = _kilometers(lot["lat"], lot["lon"], route["lat"], route["lon"])
+            if km <= 0.45:
+                near_any = True
+            if km < near_km:
+                near_km = km
+                near_trail = route["name"]
+        has_trail_name = bool(TRAIL_LOT_RE.search(lot["name"] or ""))
+        has_park_agency = bool(PARK_AGENCY_RE.search(lot.get("operator") or ""))
+        if not (near_any or has_trail_name or has_park_agency):
+            continue
+        if not near_trail and (has_trail_name or has_park_agency):
+            best_km = 1.5
+            for th in trailheads:
+                km = _kilometers(lot["lat"], lot["lon"], th["lat"], th["lon"])
+                if th["named"] and km < best_km:
+                    best_km = km
+                    near_trail = th["name"]
+        lot["near_trail"] = near_trail
+        kept.append(lot)
+    return kept
+
+
 def _excluded_parking(tags, name):
     access = (tags.get("access") or "").lower()
     if access in {"private", "customers", "no", "permit", "employees", "residents"}:
@@ -273,13 +328,17 @@ def _local_view(south, west, north, east, accept_language):
         return None
 
 
+def _zoomed_out_payload():
+    return {
+        "searching_near": None,
+        "zoomed_out": True,
+        "places": [],
+    }
+
+
 def map_view(south, west, north, east, accept_language=""):
-    if too_wide(south, west, north, east):
-        return {
-            "searching_near": None,
-            "zoomed_out": True,
-            "places": [],
-        }
+    if north <= south or east <= west:
+        return _zoomed_out_payload()
     center_lat = (south + north) / 2
     center_lon = (west + east) / 2
     # Ensure a minimum ~3 km window so zooming in closely on a cluster
@@ -296,7 +355,7 @@ def map_view(south, west, north, east, accept_language=""):
     )
     center_lat = (south + north) / 2
     center_lon = (west + east) / 2
-    key = f"view:8:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    key = f"view:9:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
     cached = _recall(key)
     if cached is not None:
         return cached
@@ -304,6 +363,8 @@ def map_view(south, west, north, east, accept_language=""):
     if local is not None:
         _remember(key, local, WEEK)
         return local
+    if too_wide(south, west, north, east):
+        return _zoomed_out_payload()
     area = _box(south, west, north, east)
     query = f"""
 [out:json][timeout:15];
@@ -312,6 +373,8 @@ def map_view(south, west, north, east, accept_language=""):
   way["highway"="trailhead"]{area};
   node["amenity"="parking"]{area};
   way["amenity"="parking"]{area};
+  way(around:8000,{center_lat},{center_lon})["route"~"^(hiking|foot|bicycle)$"];
+  relation(around:8000,{center_lat},{center_lon})["route"~"^(hiking|foot|bicycle)$"];
   node["place"~"^(town|city)$"](around:20000,{center_lat},{center_lon});
 );
 out center tags;
@@ -326,6 +389,7 @@ out center tags;
     raw_pins = []
     trailheads = []
     parking_lots = []
+    route_anchors = _route_anchors(elements)
     for element in elements:
         pin = _pin(element)
         if pin is None:
@@ -337,33 +401,7 @@ out center tags;
             if not _excluded_parking(tags, pin["name"]):
                 parking_lots.append(pin)
 
-    # Keep only trailhead/park parking lots (within 450 m of a trailhead,
-    # named after a trail/park feature, or operated by a public lands agency)
-    # so random school, store, or apartment lots in town don't clutter the map.
-    for lot in parking_lots:
-        near_trail = None
-        near_any_trailhead = False
-        near_km = 0.45
-        for th in trailheads:
-            km = _kilometers(lot["lat"], lot["lon"], th["lat"], th["lon"])
-            if km <= 0.45:
-                near_any_trailhead = True
-            if th["named"] and km < near_km:
-                near_km = km
-                near_trail = th["name"]
-        has_trail_name = bool(TRAIL_LOT_RE.search(lot["name"] or ""))
-        has_park_agency = bool(PARK_AGENCY_RE.search(lot.get("operator") or ""))
-        if not (near_any_trailhead or has_trail_name or has_park_agency):
-            continue
-        if not near_trail and (has_trail_name or has_park_agency):
-            best_km = 1.5
-            for th in trailheads:
-                km = _kilometers(lot["lat"], lot["lon"], th["lat"], th["lon"])
-                if th["named"] and km < best_km:
-                    best_km = km
-                    near_trail = th["name"]
-        lot["near_trail"] = near_trail
-        raw_pins.append(lot)
+    raw_pins.extend(_keep_trail_parking_lots(parking_lots, trailheads, route_anchors))
 
     for th in trailheads:
         near_trail = None

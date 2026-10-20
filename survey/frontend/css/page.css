@@ -56,10 +56,16 @@ main {
   min-width: 0;
 }
 
+input,
+textarea,
+select {
+  font-size: 16px;
+}
+
 .on-map-step main {
   max-width: 32rem;
-  min-height: 100dvh;
-  max-height: 100dvh;
+  min-height: 100svh;
+  max-height: 100svh;
   overflow: hidden;
   padding:
     max(0.65rem, env(safe-area-inset-top))

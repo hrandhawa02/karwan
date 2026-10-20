@@ -6,7 +6,7 @@ import * as screens from "./screens/index.js";
 import { pdfBytes } from "./pdf.js";
 import { noteText } from "./screens/check.js";
 import { loadingMessage } from "./screens/loading.js";
-import { resetAnswers, setAnswer, toggleCars, togglePay, currentVisit } from "./current_visit.js";
+import { resetAnswers, setAnswer, toggleBathroom, toggleCars, togglePayLot, currentVisit } from "./current_visit.js";
 
 const screen = document.getElementById("screen");
 const trailheadLine = document.getElementById("trailhead-line");
@@ -126,7 +126,8 @@ function onClick(event) {
   const choice = event.target.closest("[data-value]");
   if (choice) {
     if (choice.dataset.field === "carsWhere") toggleCars(choice.dataset.value);
-    else if (choice.dataset.field === "payMachine") togglePay(choice.dataset.value);
+    else if (choice.dataset.field === "payLot") togglePayLot(choice.dataset.value);
+    else if (choice.dataset.field === "bathroomLot") toggleBathroom(choice.dataset.value);
     else setAnswer(choice.dataset.field, choice.dataset.value);
     draw(false);
     return;

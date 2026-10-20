@@ -43,40 +43,134 @@
 
 .home #screen,
 .announce #screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  padding: 0;
+}
+
+body.home {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+}
+
+.home {
+  background:
+    radial-gradient(120% 55% at 50% 0%, #fff9f1 0%, rgba(255, 249, 241, 0) 62%),
+    linear-gradient(180deg, #f3ebe2 0%, #f7f3ec 55%, #efe6da 100%);
+}
+
+.home-announce {
+  position: relative;
+  width: 100%;
+  margin: 0 0 clamp(0.55rem, 1.6vh, 0.85rem);
+  padding:
+    max(0.72rem, env(safe-area-inset-top))
+    max(0.85rem, env(safe-area-inset-right))
+    0.95rem
+    max(0.85rem, env(safe-area-inset-left));
+  border: 0;
+  border-radius: 0 0 1.15rem 1.15rem;
+  background: #8b4524;
+  color: #fff6ed;
+  text-align: center;
+  box-shadow: 0 4px 14px rgba(91, 42, 20, 0.12);
+}
+
+.home-announce-copy {
+  position: relative;
+  z-index: 1;
+}
+
+.home-announce-lead {
+  margin: 0;
+  font-size: clamp(0.66rem, 2.9vw, 0.74rem);
+  font-weight: 650;
+  letter-spacing: 0.07em;
+  line-height: 1.35;
+  text-transform: uppercase;
+}
+
+.home-announce-sub {
+  margin: 0.28rem 0 0;
+  font-size: clamp(0.58rem, 2.5vw, 0.64rem);
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  line-height: 1.3;
+  text-transform: uppercase;
+  color: rgba(255, 246, 237, 0.88);
+}
+
+.home main {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  padding: 0.25rem 0 1.5rem;
+  min-height: 0;
+  max-height: none;
+  justify-content: flex-start;
+  padding-top: 0;
+  padding-bottom: max(0.8rem, env(safe-area-inset-bottom));
 }
 
 .home #screen {
-  align-items: center;
-  justify-content: space-between;
+  flex: 1 1 auto;
+  gap: 0;
   text-align: center;
-  padding-top: 6vh;
-  padding-bottom: 0.5rem;
+  min-height: 0;
 }
 
 .home .home-top,
-.home .home-bottom {
+.home .home-middle,
+.home .home-bottom,
+.home-foot {
   display: flex;
   flex-direction: column;
   align-items: center;
   width: 100%;
 }
 
+.home .home-top {
+  flex-shrink: 0;
+  padding-top: 4rem;
+}
+
+.home-brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.home-intro {
+  margin-top: clamp(0.75rem, 2.4vh, 1.15rem);
+}
+
+.home-middle {
+  flex: 1 1 auto;
+  justify-content: center;
+  min-height: clamp(6.5rem, 20vh, 12rem);
+  margin-top: clamp(0.65rem, 2.5vh, 1.15rem);
+  padding-bottom: clamp(0.25rem, 1vh, 0.55rem);
+}
+
+.home-foot {
+  flex-shrink: 0;
+  margin-top: auto;
+  padding-top: clamp(0.15rem, 0.8vh, 0.45rem);
+}
+
 .home .mark {
   position: relative;
-  width: 5.6rem;
-  height: 5.2rem;
-  margin-bottom: 0.15rem;
+  width: clamp(3.85rem, 14vw, 5.4rem);
+  height: clamp(3.6rem, 13vw, 5rem);
+  margin-bottom: 0.2rem;
 }
 
 .home .mark-k {
   display: block;
   font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
-  font-size: 5.6rem;
+  font-size: clamp(3.85rem, 14vw, 5.4rem);
   font-weight: 560;
   line-height: 0.8;
   letter-spacing: -0.04em;
@@ -87,55 +181,120 @@
   position: absolute;
   top: 0.05rem;
   right: -0.35rem;
-  width: 1.7rem;
-  height: 1.5rem;
+  width: 1.55rem;
+  height: 1.35rem;
 }
 
 .home h1 {
-  margin-bottom: 1.15rem;
-  font-size: 2.65rem;
+  margin-top: 0.15rem;
+  margin-bottom: 0;
+  font-size: clamp(2.15rem, 7.2vw, 3rem);
   line-height: 1;
 }
 
 .home .tagline {
-  max-width: 16.5rem;
-  margin: 0;
-  font-size: 1.2rem;
-  line-height: 1.35;
+  max-width: 18rem;
+  margin: 0 0 0.4rem;
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-size: clamp(1.05rem, 3.6vw, 1.45rem);
+  font-weight: 560;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
 }
 
-.home .soon {
-  margin: 1.15rem 0 0;
-  color: var(--green);
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
+.home .why {
+  max-width: 19rem;
+  margin: 0;
+  color: #3f4742;
+  font-size: clamp(0.88rem, 2.6vw, 1rem);
+  line-height: 1.35;
 }
 
 .home .home-sports {
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: min(100%, 16rem);
-  margin: 1.15rem 0 0.35rem;
+  width: 100%;
+  margin: 0;
+}
+
+.home .amenities {
+  margin: clamp(1.15rem, 3.8vh, 1.85rem) 0 0;
+  padding-top: clamp(0.35rem, 1.2vh, 0.65rem);
+}
+
+.home .amenities-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.home .amenity-list {
+  display: flex;
+  justify-content: center;
+  gap: 1.45rem;
+  margin: 0.55rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.home .amenity-list li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.38rem;
+  min-width: 4.2rem;
+  color: var(--ink);
+  font-size: 0.86rem;
+  font-weight: 600;
+}
+
+.home .amenity-mark {
+  width: 3.05rem;
+  height: 3.05rem;
+}
+
+.home .amenity-mark svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.home .sport-rail {
+  display: flex;
+  gap: 0.65rem;
+  width: 100%;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+  padding: 0.1rem calc((100% - min(76%, 18.5rem)) / 2) 0.15rem;
+}
+
+.home .sport-rail::-webkit-scrollbar {
+  display: none;
 }
 
 .home .sport-fact {
   display: flex;
+  flex: 0 0 min(76%, 18.5rem);
   flex-direction: row;
   align-items: center;
   justify-content: flex-start;
-  gap: 0.9rem;
-  width: 100%;
-  min-height: 5.6rem;
-  padding: 0.9rem 1.05rem;
-  border: 1px solid var(--line);
+  gap: 0.8rem;
+  width: min(76%, 18.5rem);
+  min-height: 5.35rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid #ebe3d8;
   border-radius: 16px;
   background: var(--card);
   color: inherit;
   font: inherit;
   text-align: left;
+  box-shadow: 0 8px 22px rgba(23, 33, 28, 0.07);
+  scroll-snap-align: center;
   cursor: pointer;
 }
 
@@ -145,8 +304,8 @@
 }
 
 .home .sport-symbol {
-  width: 3.15rem;
-  height: 3.15rem;
+  width: 3rem;
+  height: 3rem;
   flex: 0 0 auto;
 }
 
@@ -160,43 +319,48 @@
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 0.18rem;
+  gap: 0.12rem;
   min-width: 0;
-}
-
-.home .sport-copy.is-in {
-  animation: sport-in 220ms ease;
 }
 
 .home .sport-number {
   color: var(--green);
   font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
-  font-size: 1.7rem;
+  font-size: 1.65rem;
   font-weight: 560;
   letter-spacing: -0.03em;
   line-height: 1;
+  white-space: nowrap;
 }
 
 .home .sport-name {
-  color: var(--muted);
-  font-size: 0.92rem;
-  font-weight: 500;
+  color: var(--ink);
+  font-size: 0.9rem;
+  font-weight: 650;
   letter-spacing: 0;
   line-height: 1.2;
+}
+
+.home .sport-note {
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 500;
+  line-height: 1.25;
 }
 
 .home .sport-dots {
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 0.45rem;
-  max-width: 11rem;
-  margin-top: 0.7rem;
+  gap: 0.38rem;
+  max-width: 10.5rem;
+  margin: 0.55rem 0 0;
+  padding-bottom: 0.15rem;
 }
 
 .home .sport-dots button {
-  width: 0.48rem;
-  height: 0.48rem;
+  width: 0.45rem;
+  height: 0.45rem;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -205,7 +369,7 @@
 }
 
 .home .sport-dots button.is-on {
-  width: 1.05rem;
+  width: 0.95rem;
   border-radius: 999px;
   background: var(--green);
 }
@@ -215,58 +379,75 @@
   outline-offset: 2px;
 }
 
-@keyframes sport-in {
-  from {
-    transform: translateY(0.2rem);
-  }
-  to {
-    transform: none;
-  }
+.home .home-bottom {
+  width: min(100%, 18.5rem);
+  margin: 0;
+  padding: 0;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .home .sport-copy.is-in {
-    animation: none;
-  }
+.home .home-rule {
+  width: 48%;
+  max-width: 10.5rem;
+  margin: 0.85rem 0 0;
+  border: 0;
+  border-top: 1px solid #c9bdb0;
 }
 
-.home .pair {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 0.65rem;
-  width: min(100%, 16rem);
-  margin-top: 0;
+.home a.updates {
+  margin-top: 0.65rem;
+  color: var(--ink);
+  font-size: 0.92rem;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.18rem;
 }
 
 @media (min-width: 800px) {
   .home main {
     max-width: 40rem;
   }
+}
 
-  .home .mark {
-    width: 7rem;
-    height: 6.4rem;
+@media (max-height: 740px) {
+  .home .home-top {
+    padding-top: 4rem;
   }
 
-  .home .mark-k {
-    font-size: 7rem;
+  .home-middle {
+    min-height: 8.5rem;
+    margin-top: 1.1rem;
   }
 
-  .home h1 {
-    font-size: 3.4rem;
+  .home .amenities {
+    margin-top: 0.55rem;
   }
 
-  .home .tagline {
-    max-width: 22rem;
-    font-size: 1.35rem;
+  .home .amenity-mark {
+    width: 2.45rem;
+    height: 2.45rem;
+  }
+
+  .home .sport-dots {
+    margin-top: 0.45rem;
+  }
+
+  .home a.updates {
+    margin-top: 0.45rem;
+  }
+
+  .home .for-us {
+    margin-top: 0.35rem;
+  }
+
+  .home .legal {
+    margin-top: 0.35rem;
   }
 }
 
 .home .for-us {
-  margin: 0.9rem 0 0;
-  color: var(--muted);
-  font-size: 0.95rem;
+  margin: 0.55rem 0 0;
+  color: var(--ink);
+  font-size: 0.88rem;
 }
 
 .home a.go {
@@ -274,20 +455,14 @@
   align-items: center;
   justify-content: center;
   width: 100%;
-  min-height: 2.9rem;
+  min-height: 2.85rem;
   padding: 0.65rem 1.05rem;
-  border: 1px solid var(--green);
-  border-radius: 6px;
+  border: 0;
+  border-radius: 999px;
   background: var(--green);
   color: white;
   font-weight: 650;
   text-decoration: none;
-}
-
-.home a.go.quiet {
-  background: var(--card);
-  color: var(--ink);
-  border-color: var(--line);
 }
 
 .announce h1 {
@@ -330,6 +505,11 @@
   position: static;
   padding-top: 1.5rem;
   background: none;
+}
+
+.home .legal {
+  margin: 0.45rem 0 0;
+  flex-shrink: 0;
 }
 
 .legal {

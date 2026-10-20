@@ -2,12 +2,7 @@ import { arrivalInRange } from "./clock.js";
 import { currentVisit } from "./current_visit.js";
 
 export function stepOrder() {
-  const answers = currentVisit.answers;
-  const list = ["hikeStart", "stay", "carsWhere", "accessible", "payRequired"];
-  if (answers.payRequired === "yes") list.push("payMachine");
-  list.push("bathroom");
-  if (answers.bathroomExists === "yes") list.push("bathroomHow");
-  return list;
+  return ["hikeStart", "stay", "carsWhere", "accessible", "payRequired", "bathroom"];
 }
 
 export function onLastStep() {
@@ -34,10 +29,16 @@ const canLeave = {
   stay: () => Boolean(currentVisit.answers.stay),
   carsWhere: () => currentVisit.answers.carsWhere.length > 0,
   accessible: () => Boolean(currentVisit.answers.accessible),
-  payRequired: () => Boolean(currentVisit.answers.payRequired),
-  payMachine: () => currentVisit.answers.payMachine.length > 0,
-  bathroom: () => Boolean(currentVisit.answers.bathroomExists),
-  bathroomHow: () => Boolean(currentVisit.answers.bathroomCondition),
+  payRequired: () => {
+    const answers = currentVisit.answers;
+    if (answers.payRequired === "yes") return answers.payMachine.length > 0;
+    return Boolean(answers.payRequired);
+  },
+  bathroom: () => {
+    const answers = currentVisit.answers;
+    if (answers.bathroomExists === "yes") return Boolean(answers.bathroomCondition);
+    return Boolean(answers.bathroomExists);
+  },
   check: () => !currentVisit.saving,
 };
 

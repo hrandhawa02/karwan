@@ -20,3 +20,6 @@ __pycache__/
 *.pyc
 *.db
 .DS_Store
+
+# Planet extracts and the outdoors database. Not for git or Railway.
+karwan-data/

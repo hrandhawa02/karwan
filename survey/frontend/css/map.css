@@ -160,7 +160,7 @@
   background: var(--card);
   color: var(--ink);
   font: inherit;
-  font-size: 0.96rem;
+  font-size: 16px;
 }
 
 .map-suggest {
@@ -186,9 +186,14 @@
   position: relative;
 }
 
+.on-map-step .map-toolbar {
+  position: relative;
+  z-index: 20;
+}
+
 .on-map-step .map-search-wrap {
   position: relative;
-  z-index: 6;
+  z-index: 1;
 }
 
 .suggest-shade {
@@ -205,21 +210,23 @@
   display: none;
 }
 
-.on-map-step #map-step.suggest-open .map-filters,
-.on-map-step #map-step.suggest-open .map-frame,
-.on-map-step #map-step.suggest-open .map-sheet {
-  opacity: 0.38;
-}
-
 .on-map-step .map-suggest {
   position: absolute;
-  z-index: 8;
+  z-index: 2;
   top: calc(100% + 0.35rem);
   left: 0;
   right: 0;
   max-height: min(20rem, 52dvh);
   margin: 0;
   box-shadow: 0 8px 24px rgba(23, 33, 28, 0.16);
+}
+
+.on-map-step #map-step.suggest-open .map-frame {
+  z-index: 0;
+}
+
+.on-map-step #map-step.suggest-open .suggest-shade:not([hidden]) {
+  z-index: 15;
 }
 
 .suggest-label {
@@ -239,7 +246,7 @@
   padding: 0.7rem 0.85rem;
   border: none;
   border-bottom: 1px solid var(--line);
-  background: transparent;
+  background: var(--card);
   color: var(--ink);
   font: inherit;
   text-align: left;
@@ -308,14 +315,79 @@
   background: var(--muted);
 }
 
+.map-filters-scroll {
+  position: relative;
+  margin-top: 0.45rem;
+}
+
+.map-filters-scroll.has-more-end::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 3rem;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(246, 243, 238, 0) 0%, var(--bg) 72%);
+}
+
+.map-filters-scroll.has-more-start::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 3rem;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(270deg, rgba(246, 243, 238, 0) 0%, var(--bg) 72%);
+}
+
+.map-filters-scroll.has-more-end .map-filters-more {
+  display: block;
+}
+
+.map-filters-scroll.has-more-start .map-filters-back {
+  display: block;
+}
+
+.map-filters-scroll.has-more-start .map-filters {
+  padding-left: 1.65rem;
+  scroll-padding-inline-start: 1.5rem;
+}
+
+.map-filters-more,
+.map-filters-back {
+  display: none;
+  position: absolute;
+  top: 42%;
+  transform: translateY(-50%);
+  z-index: 2;
+  color: var(--muted);
+  font-size: 1.45rem;
+  font-weight: 650;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.map-filters-more {
+  right: 0.2rem;
+}
+
+.map-filters-back {
+  left: 0.2rem;
+}
+
 .map-filters {
   display: flex;
   gap: 0.35rem;
-  margin-top: 0.45rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  padding: 0.2rem 0.05rem 0.15rem;
+  padding: 0.2rem 2.1rem 0.15rem 0.05rem;
+  scroll-padding-inline-end: 2rem;
+  scroll-padding-inline-start: 0.25rem;
 }
 
 .map-filters::-webkit-scrollbar {
@@ -332,7 +404,7 @@
   display: inline-flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 0.28rem;
   width: 4.2rem;
   min-height: 0;
@@ -356,19 +428,32 @@
 }
 
 .filter-pill .filter-line {
-  display: inline-flex;
-  align-items: baseline;
-  justify-content: center;
-  gap: 0.18rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.06rem;
+  width: 100%;
+  min-height: 1.62rem;
   max-width: 100%;
 }
 
+.filter-word {
+  line-height: 1.15;
+  text-align: center;
+}
+
 .filter-count {
+  min-height: 0.72rem;
   color: var(--green);
-  font-size: 0.68rem;
+  font-size: 0.72rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
+}
+
+.filter-pill.is-on .filter-count {
+  color: var(--green);
 }
 
 .filter-pill.is-on {
@@ -1080,6 +1165,26 @@ body.search-modal-open {
 
 .name-step .name-entry + .name-entry {
   margin-top: 1.15rem;
+}
+
+.name-step .name-field-wrap {
+  position: relative;
+  width: 100%;
+}
+
+.name-step .name-suggest {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 0.35rem);
+  left: 0;
+  right: 0;
+  max-height: min(18rem, 45dvh);
+  margin: 0;
+  box-shadow: 0 8px 24px rgba(23, 33, 28, 0.16);
+}
+
+.on-map-step.map-naming #screen {
+  overflow: visible;
 }
 
 .step-in {

@@ -25,6 +25,7 @@ FILTERS = [
     "nwr/route=mtb",
     "nwr/route=ski",
     "nwr/piste:type",
+    "nwr/sport=snowboarding",
     "nwr/sport=climbing",
     "nwr/climbing",
     "nwr/via_ferrata",

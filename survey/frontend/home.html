@@ -4,14 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex">
-  <meta name="description" content="See the lot through the community's eyes, before you leave home.">
+  <meta name="description" content="Know the lot's condition before you leave your doorstep.">
   <title>Karwan</title>
   <link rel="icon" href="/survey/favicon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/survey/apple-touch-icon.png">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="Karwan">
   <meta property="og:title" content="Karwan">
-  <meta property="og:description" content="See the lot through the community's eyes, before you leave home.">
+  <meta property="og:description" content="Know the lot's condition before you leave your doorstep.">
   <meta property="og:url" content="https://karwan.page/">
   <meta property="og:image" content="https://karwan.page/survey/og-image.png">
   <meta name="twitter:card" content="summary">
@@ -22,45 +22,69 @@
   <link rel="stylesheet" href="/survey/style.css">
 </head>
 <body class="home">
+  <header class="home-announce" role="status">
+    <div class="home-announce-copy">
+      <p class="home-announce-lead">Coming soon on iOS and Android</p>
+      <p class="home-announce-sub">Karwan mobile app</p>
+    </div>
+  </header>
   <main>
     <div id="screen">
       <div class="home-top">
-        <div class="mark" aria-hidden="true">
-          <span class="mark-k">K</span>
-          <svg class="mark-peak" viewBox="0 0 36 32">
-            <path fill="#a34e22" d="M4 28 L16 6 L21 14 L28 7 L32 28 Z"/>
-            <circle cx="27" cy="8" r="3.2" fill="#e2b657"/>
-          </svg>
+        <div class="home-brand">
+          <div class="mark" aria-hidden="true">
+            <span class="mark-k">K</span>
+            <svg class="mark-peak" viewBox="0 0 36 32">
+              <path fill="#a34e22" d="M4 28 L16 6 L21 14 L28 7 L32 28 Z"/>
+              <circle cx="27" cy="8" r="3.2" fill="#e2b657"/>
+            </svg>
+          </div>
+          <h1>Karwan</h1>
         </div>
-        <h1>Karwan</h1>
-        <p class="tagline">See the lot through the community’s eyes, before you leave home.</p>
-        <p class="soon">Coming soon</p>
+        <div class="home-intro">
+          <p class="tagline">Trailhead Status Tracker</p>
+          <p class="why">Know the lot's condition before you leave your doorstep.</p>
+        </div>
       </div>
-      <div class="home-sports">
-        <button type="button" id="sport-fact" class="sport-fact">
-          <span id="sport-symbol" class="sport-symbol" aria-hidden="true"></span>
-          <span class="sport-copy">
-            <span id="sport-number" class="sport-number"></span>
-            <span id="sport-name" class="sport-name"></span>
-          </span>
-        </button>
+      <div class="home-middle">
+        <div class="home-sports">
+          <div id="sport-rail" class="sport-rail" aria-roledescription="carousel" aria-label="Places on the map"></div>
+        </div>
         <div id="sport-dots" class="sport-dots"></div>
-      </div>
-      <div class="home-bottom">
-        <div class="pair">
-          <a class="go quiet" href="/announcements">Announcements</a>
-          <a class="go" href="/survey/">Take the survey</a>
+        <div class="amenities">
+          <p class="amenities-label">Lot amenities</p>
+          <ul class="amenity-list">
+            <li>
+              <span class="amenity-mark" aria-hidden="true"><svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="12.5" fill="#f4e4d4"/><path d="M7.6 15.2 9.2 11.8c.3-.6.9-1 1.6-1h6.4c.7 0 1.3.4 1.6 1l1.6 3.4v3.6h-1.3v-1.1H8.9v1.1H7.6v-3.6zm2.3.5h8.2l-.9-1.9H10.8l-.9 1.9zM10 17.2a1 1 0 1 0 0 2 1 1 0 0 0 0-2zm8 0a1 1 0 1 0 0 2 1 1 0 0 0 0-2z" fill="#a34e22"/></svg></span>
+              Car
+            </li>
+            <li>
+              <span class="amenity-mark" aria-hidden="true"><svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="12.5" fill="#f4e4d4"/><circle cx="10.2" cy="10.2" r="1.35" fill="#a34e22"/><circle cx="17.8" cy="10.2" r="1.35" fill="#a34e22"/><path d="M8.6 12.4c.5 1.5 1.3 2.2 1.6 4.2.2 1.2.1 2.6.1 3.6h1.7v-3.1h.6v3.1h2.4v-3.1h.6v3.1h1.7c0-1 .1-2.4.1-3.6.3-2 1.1-2.7 1.6-4.2" fill="none" stroke="#a34e22" stroke-width="1.35" stroke-linecap="round"/></svg></span>
+              Bathrooms
+            </li>
+            <li>
+              <span class="amenity-mark" aria-hidden="true"><svg viewBox="0 0 28 28"><circle cx="14" cy="14" r="12.5" fill="#f4e4d4"/><rect x="7.4" y="10.2" width="13.2" height="8.4" rx="1.4" fill="none" stroke="#a34e22" stroke-width="1.45"/><path d="M7.4 13.2h13.2" stroke="#a34e22" stroke-width="1.45"/></svg></span>
+              Pay
+            </li>
+          </ul>
         </div>
-        <p class="for-us">Built by the community, for the community.</p>
       </div>
     </div>
-    <p class="legal">
-      <a href="/privacy">Privacy</a>
-      <span aria-hidden="true"> · </span>
-      <a href="/terms">Terms</a>
-      <span aria-hidden="true"> · </span>
-      © 2026 Karwan
-    </p>
+    <div class="home-foot">
+      <div class="home-bottom">
+        <a class="go" href="/survey/">Add a visit note</a>
+        <hr class="home-rule" aria-hidden="true">
+        <a class="updates" href="/announcements">Get launch updates</a>
+        <p class="for-us">Built by the community, for the community.</p>
+      </div>
+      <p class="legal">
+        <a href="/privacy">Privacy</a>
+        <span aria-hidden="true"> · </span>
+        <a href="/terms">Terms</a>
+        <span aria-hidden="true"> | </span>
+        © 2026 Karwan
+      </p>
+    </div>
   </main>
   <script type="module" src="/survey/home.js"></script>
 </body>

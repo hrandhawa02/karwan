@@ -35,6 +35,51 @@ export function toggleCars(value) {
   answers.saveError = "";
 }
 
+export function togglePayLot(value) {
+  const answers = currentVisit.answers;
+  if (value === "no" || value === "didnt_look") {
+    answers.payRequired = answers.payRequired === value ? null : value;
+    answers.payMachine = [];
+    answers.saveError = "";
+    return;
+  }
+  answers.payRequired = "yes";
+  togglePay(value);
+  if (answers.payMachine.length === 0) answers.payRequired = null;
+}
+
+const BATH_ALONE = new Set(["no", "didnt_check"]);
+const BATH_COND = ["ok", "attention", "closed"];
+
+export function bathSelection() {
+  const answers = currentVisit.answers;
+  if (answers.bathroomExists === "yes") {
+    return String(answers.bathroomCondition || "").split(",").filter(Boolean);
+  }
+  return answers.bathroomExists ? [answers.bathroomExists] : [];
+}
+
+export function toggleBathroom(value) {
+  const answers = currentVisit.answers;
+  if (BATH_ALONE.has(value)) {
+    answers.bathroomExists = answers.bathroomExists === value ? null : value;
+    answers.bathroomCondition = null;
+  } else {
+    let picked = bathSelection().filter((item) => BATH_COND.includes(item));
+    picked = picked.includes(value)
+      ? picked.filter((item) => item !== value)
+      : picked.concat(value);
+    if (picked.length === 0) {
+      answers.bathroomExists = null;
+      answers.bathroomCondition = null;
+    } else {
+      answers.bathroomExists = "yes";
+      answers.bathroomCondition = picked.slice().sort().join(",");
+    }
+  }
+  answers.saveError = "";
+}
+
 export function togglePay(value) {
   const answers = currentVisit.answers;
   const machine = new Set(["cards", "tap", "bills", "broken"]);
