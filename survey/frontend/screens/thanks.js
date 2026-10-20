@@ -12,7 +12,7 @@ export function render() {
         type="button"
         class="share thanks-btn thanks-btn-primary"
         id="share"
-        aria-label="Share Karwan so someone else can add a trailhead update"
+        aria-label="Pass Karwan on so someone else can add a lot update"
       >
         <svg viewBox="0 0 24 24" aria-hidden="true">
           <circle cx="18" cy="5" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
@@ -20,7 +20,7 @@ export function render() {
           <circle cx="18" cy="19" r="2.5" fill="none" stroke="currentColor" stroke-width="1.8"/>
           <path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" d="M8.2 10.8 15.8 6.5M8.2 13.2l7.6 4.3"/>
         </svg>
-        <span class="share-label">Share trailhead status</span>
+        <span class="share-label">Pass it on</span>
       </button>
       <button type="button" class="another thanks-btn thanks-btn-secondary" id="another">
         Add another spot update
