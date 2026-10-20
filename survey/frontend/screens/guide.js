@@ -9,7 +9,7 @@ export function render() {
         <span class="guide-num" aria-hidden="true">1</span>
         <div>
           <h2>Pick the lot</h2>
-          <p>Pick the parking lot for the sport you were out for. The map includes about <strong class="guide-count">6.9 million</strong> lots and named places for hike, snow, climb, beach, lift, and more. Drop a pin if the lot is not listed.</p>
+          <p>Pick the parking lot for the sport you were out for. The map includes about <strong class="guide-count">6.9 million</strong> lots, <strong class="guide-count">173,000</strong> hike routes, and <strong class="guide-count">81,000</strong> climb routes. Drop a pin if the lot is not listed.</p>
         </div>
       </li>
       <li>
