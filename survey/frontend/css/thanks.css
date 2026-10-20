@@ -12,6 +12,11 @@
   margin-top: 0.85rem;
 }
 
+.thanks-share-prompt {
+  margin-top: 1rem !important;
+  color: var(--muted, #5c534a);
+}
+
 .done {
   width: 4.25rem;
   height: 4.25rem;
@@ -37,38 +42,63 @@
   margin-top: auto;
 }
 
+.thanks-actions {
+  gap: 0.75rem;
+  width: 100%;
+}
+
 .actions.stack .another {
   width: 100%;
   text-align: center;
 }
 
-.thanks-pair {
-  display: flex;
-  gap: 0.65rem;
+.thanks-primary {
   width: 100%;
-}
-
-.actions.stack .thanks-pair .share,
-.actions.stack .thanks-pair .download {
-  flex: 1;
-  width: auto;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 0.45rem;
+  gap: 0.5rem;
   text-align: center;
+  font-weight: 600;
 }
 
-.thanks-pair svg {
+.thanks-primary svg {
   width: 1.15rem;
   height: 1.15rem;
   flex: 0 0 auto;
 }
 
-.download,
-.share {
-  background: var(--card);
+.thanks-pdf {
+  align-self: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem;
+  margin: 0;
+  border: 0;
+  background: transparent;
   color: var(--ink);
-  border-color: var(--line);
-  font-weight: 600;
+  font: inherit;
+  font-size: 0.9375rem;
+  font-weight: 550;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+  cursor: pointer;
+}
+
+.thanks-pdf svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  opacity: 0.85;
+}
+
+.thanks-pdf:hover {
+  color: var(--accent, #a34e22);
+}
+
+.share.thanks-primary {
+  background: var(--green);
+  color: #fff;
+  border-color: var(--green);
 }

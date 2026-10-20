@@ -29,6 +29,15 @@ const filters = {
   peak: false,
   range: false,
   viewpoint: false,
+  beach: false,
+  picnic: false,
+  hot_spring: false,
+  lift: false,
+  ranger: false,
+  boat: false,
+  horse: false,
+  hut: false,
+  cave: false,
 };
 const COUNTED_KINDS = new Set(Object.keys(filters));
 const ACTIVITY_FILTERS = [
@@ -42,6 +51,15 @@ const ACTIVITY_FILTERS = [
   ["peak", "Peak"],
   ["range", "Range"],
   ["viewpoint", "Viewpoint"],
+  ["beach", "Beach"],
+  ["picnic", "Picnic"],
+  ["hot_spring", "Hot spring"],
+  ["lift", "Lift"],
+  ["ranger", "Ranger"],
+  ["boat", "Boat"],
+  ["horse", "Horse"],
+  ["hut", "Hut"],
+  ["cave", "Cave"],
 ];
 let viewLabel = "North Bend";
 
@@ -181,6 +199,60 @@ function activityMark(id) {
     return keyCircle(
       "#2a8a8a",
       `<circle cx="14" cy="14" r="3.3" fill="none" stroke="#fff" stroke-width="1.7"/><circle cx="14" cy="14" r="1.15" fill="#fff"/><path d="M14 6.8v2.3M14 18.9v2.3M6.8 14h2.3M18.9 14h2.3" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "beach") {
+    return keyCircle(
+      "#c4a035",
+      `<path d="M5 19.5h18" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M6.5 19.5c1.5-2.8 3.5-4.2 7.5-4.2s6 1.4 7.5 4.2" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "picnic") {
+    return keyCircle(
+      "#6b8a3a",
+      `<path d="M8 12h12M14 12V8.5M10.5 8.5h7" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M9 12 7.5 19M19 12l1.5 7" stroke="#fff" stroke-width="1.4" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "hot_spring") {
+    return keyCircle(
+      "#6a5a8a",
+      `<path d="M10 18c0-3 2-5.5 4-8 2 2.5 4 5 4 8" fill="none" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/><path d="M11.5 14.5c.8-1.2 1.5-2 2.5-2s1.7.8 2.5 2" fill="none" stroke="#fff" stroke-width="1.3" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "lift") {
+    return keyCircle(
+      "#4a6a8a",
+      `<path d="M8 20V10l6-4 6 4v10" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><circle cx="14" cy="11" r="1.3" fill="#fff"/>`,
+    );
+  }
+  if (id === "ranger") {
+    return keyCircle(
+      "#3d6b4f",
+      `<path d="M7 20V11l7-5 7 5v9" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><rect x="11.5" y="14" width="5" height="6" rx=".5" fill="#fff"/>`,
+    );
+  }
+  if (id === "boat") {
+    return keyCircle(
+      "#2a7a9a",
+      `<path d="M6 17h16l-2.5-4H8.5L6 17z" fill="#fff"/><path d="M14 8v5" stroke="#fff" stroke-width="1.5" stroke-linecap="round"/>`,
+    );
+  }
+  if (id === "horse") {
+    return keyCircle(
+      "#7a5a3a",
+      `<circle cx="10" cy="11" r="1.5" fill="#fff"/><path d="M10 12.5c1.5 2 3.5 3 6 3.5l-1 4.5H12l-.5-3" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`,
+    );
+  }
+  if (id === "hut") {
+    return keyCircle(
+      "#8a6244",
+      `<path d="M6 19V12l8-6 8 6v7" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/><path d="M10 19v-5h8v5" fill="#fff"/>`,
+    );
+  }
+  if (id === "cave") {
+    return keyCircle(
+      "#5a5048",
+      `<path d="M7 20c0-6 3.5-10 7-10s7 4 7 10" fill="none" stroke="#fff" stroke-width="1.6" stroke-linecap="round"/><circle cx="14" cy="15" r="2" fill="#fff"/>`,
     );
   }
   return keyCircle("#8a8178", `<circle cx="14" cy="14" r="3" fill="#fff"/>`);
@@ -1334,6 +1406,7 @@ async function loadPins(keepNote = false) {
         drawPins(mergePins([]));
       } else {
         clearPins();
+        syncFilterPills();
       }
       if (!keepNote) {
         if (userMarkedSpot()) restoreSelectionNote();
@@ -1594,6 +1667,15 @@ const PLACE_WORDS = {
   climb: "Climb",
   ski: "Snow",
   piste: "Snow",
+  beach: "Beach",
+  picnic: "Picnic",
+  hot_spring: "Hot spring",
+  lift: "Lift",
+  ranger: "Ranger",
+  boat: "Boat",
+  horse: "Horse",
+  hut: "Hut",
+  cave: "Cave",
   path: "Trail",
   track: "Trail",
   footway: "Trail",
@@ -1816,8 +1898,13 @@ function activityCount(kind) {
   if (!map || !COUNTED_KINDS.has(kind)) return 0;
   const bounds = map.getBounds();
   let count = 0;
-  for (const pin of loaded) {
-    if (pin.kind === kind && bounds.contains([pin.lat, pin.lon])) count += 1;
+  const seen = new Set();
+  for (const pin of knownPins.values()) {
+    if (pin.kind !== kind || !bounds.contains([pin.lat, pin.lon])) continue;
+    const key = pinKey(pin);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    count += 1;
   }
   return count;
 }

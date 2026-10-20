@@ -93,11 +93,12 @@ async function saveVisit() {
 async function shareSurvey() {
   const url = `${location.origin}/survey/`;
   const button = document.getElementById("share");
+  const label = button?.querySelector(".share-label");
   if (navigator.share) {
     try {
       await navigator.share({
         title: "Karwan",
-        text: "One-minute trailhead parking note.",
+        text: "One-minute trailhead lot note.",
         url,
       });
       return;
@@ -107,9 +108,9 @@ async function shareSurvey() {
   }
   try {
     await navigator.clipboard.writeText(url);
-    if (button) button.textContent = "Link copied";
+    if (label) label.textContent = "Link copied";
   } catch {
-    if (button) button.textContent = "Copy the page address";
+    if (label) label.textContent = "Copy failed";
   }
 }
 

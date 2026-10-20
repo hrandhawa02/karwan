@@ -72,6 +72,15 @@ ACTIVITY_KINDS = (
     "peak",
     "range",
     "viewpoint",
+    "beach",
+    "picnic",
+    "hot_spring",
+    "lift",
+    "ranger",
+    "boat",
+    "horse",
+    "hut",
+    "cave",
 )
 ACTIVITY_CAP = 40
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
