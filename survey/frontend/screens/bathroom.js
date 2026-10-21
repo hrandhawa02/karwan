@@ -1,5 +1,5 @@
 import { actions, sceneCards } from "../buttons.js";
-import { bathSelection } from "../current_visit.js";
+import { bathSelection, currentVisit } from "../current_visit.js";
 
 const CARDS = [
   ["no", "No", "No bathroom at the lot", "/survey/scenes/bath-no.jpg"],
@@ -15,6 +15,7 @@ export function render() {
     <div class="park-step">
       <h1>Were there bathrooms?</h1>
       <p class="hint">Check every one that fits. No bathroom and I didn’t look each stand on their own.</p>
+      ${currentVisit.filledFromMap?.bath ? `<p class="hint">Filled from the map listing. Change it if this lot was different.</p>` : ""}
       ${sceneCards("bathroomLot", cards, bathSelection(), true)}
       ${actions("Next >>")}
     </div>

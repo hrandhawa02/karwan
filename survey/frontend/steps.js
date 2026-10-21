@@ -49,7 +49,7 @@ export function ready() {
 
 export function nextStep(force) {
   if (!force && !ready()) return null;
-  if (currentVisit.stepId === "start") return "guide";
+  if (currentVisit.stepId === "start") return "map";
   if (currentVisit.stepId === "guide") return "map";
   const list = stepOrder();
   const index = list.indexOf(currentVisit.stepId);
@@ -58,7 +58,7 @@ export function nextStep(force) {
 }
 
 export function previousStep() {
-  if (currentVisit.stepId === "map") return "guide";
+  if (currentVisit.stepId === "map") return "start";
   if (currentVisit.stepId === "guide") return "start";
   if (currentVisit.stepId === "hikeStart") return "map";
   const list = stepOrder();

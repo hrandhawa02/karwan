@@ -1,5 +1,6 @@
 import { esc } from "../buttons.js";
-import { currentVisit } from "../current_visit.js";
+import { matchingCountries } from "../countries.js";
+import { applyKnown, currentVisit } from "../current_visit.js";
 
 const DEFAULT_VIEW = { lat: 47.4881, lon: -121.7237, zoom: 13 };
 const SEARCH_MIN_ZOOM = 14;
@@ -9,16 +10,9 @@ const TILE_URL = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
 const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
 const NO_P_NOTE = "I didn't find a lot in this area. Drop a pin to mark where you parked.";
 const ZOOM_IN_NOTE = "Zoom in to load parking and trails here.";
-const SUGGEST_EMPTY = "Nothing matched. Try a town, or coordinates like 47.49, -121.72.";
-const REGIONS = [
-  { label: "North Bend", placeType: "town", lat: 47.4881, lon: -121.7237 },
-  { label: "Mount Rainier", placeType: "park", lat: 46.7865, lon: -121.7360 },
-  { label: "Olympic Peninsula", placeType: "region", lat: 47.9693, lon: -123.4986 },
-  { label: "Leavenworth", placeType: "town", lat: 47.5962, lon: -120.6615 },
-  { label: "North Cascades", placeType: "range", lat: 48.7110, lon: -121.2065 },
-];
-
+const SUGGEST_EMPTY = "Nothing matched. Try a trail name, a country, or coordinates like 47.49, -121.72.";
 const filters = {
+  parking: true,
   hike: true,
   bike: false,
   ski: false,
@@ -39,8 +33,8 @@ const filters = {
   hut: false,
   cave: false,
 };
-const COUNTED_KINDS = new Set(Object.keys(filters));
 const ACTIVITY_FILTERS = [
+  ["parking", "Lots"],
   ["hike", "Hike"],
   ["bike", "Bike"],
   ["ski", "Snow"],
@@ -61,7 +55,9 @@ const ACTIVITY_FILTERS = [
   ["hut", "Hut"],
   ["cave", "Cave"],
 ];
-let viewLabel = "North Bend";
+let viewLabel = "";
+let viewCounts = null;
+let clusterView = false;
 
 let map = null;
 let pins = [];
@@ -129,10 +125,11 @@ function markHtml(kind, count = 0, selected = false, community = false) {
     return `<div class="mark mark-cluster" aria-label="${count} pins">${count}</div>`;
   }
   if (kind === "trail") {
-    const fill = selected ? "#a34e22" : "#0b7a56";
+    const fill = selected ? "#a34e22" : "#1f6b4a";
     return `<svg class="mark mark-trail" viewBox="0 0 28 28" aria-hidden="true">
       <circle cx="14" cy="14" r="12.5" fill="${fill}" stroke="#ffffff" stroke-width="2.5"/>
-      ${HIKE_BOOT_SVG("#fff")}
+      <path d="M13.2 7.2h1.6V21" fill="none" stroke="#ffffff" stroke-width="1.7" stroke-linecap="round"/>
+      <path d="M14.6 8.2h6.2l-1.15 2.15 1.15 2.15h-6.2z" fill="#ffffff"/>
     </svg>`;
   }
   if (kind === "lot") {
@@ -164,6 +161,9 @@ function HIKE_BOOT_SVG(fill) {
 const WALK_PERSON_MARK = `<circle cx="14" cy="8.4" r="2.05" fill="#fff"/><path d="M14 10.6v4.6M14 13l-3.2 5.2M14 13l4.2 4.8M14 11.6l-2.9 2.1M14 11.6l3.1 1.7" fill="none" stroke="#fff" stroke-width="1.55" stroke-linecap="round" stroke-linejoin="round"/>`;
 
 function activityMark(id) {
+  if (id === "parking") {
+    return `<svg class="mark mark-lot" viewBox="0 0 28 28" aria-hidden="true"><rect x="2.5" y="2.5" width="23" height="23" rx="6" fill="#1d4e89"/><path d="M10.5 19.5V8.5h4.6c2.2 0 3.6 1.3 3.6 3.3 0 2.1-1.4 3.4-3.6 3.4h-2.3v4.3h-2.3zm2.3-6.2h2c1 0 1.6-.6 1.6-1.5 0-.9-.6-1.4-1.6-1.4h-2v2.9z" fill="#ffffff"/></svg>`;
+  }
   if (id === "hike") return keyCircle("#0b7a56", HIKE_BOOT_SVG("#fff"));
   if (id === "bike") {
     return keyCircle(
@@ -365,7 +365,7 @@ function isActivityPin(pin) {
 }
 
 function pinShown(pin) {
-  if (pin.kind === "parking") return true;
+  if (pin.kind === "parking") return Boolean(filters.parking) || isChosenPin(pin);
   if (pin.kind === "trailhead") return filters.hike || isChosenPin(pin);
   if (pin.kind === "hike") return filters.hike || isChosenPin(pin);
   if (isActivityPin(pin)) return Boolean(filters[pin.kind]);
@@ -718,7 +718,7 @@ function sheet(state) {
   const sub = document.getElementById("sheet-sub");
   if (!title || !sub) return;
   fadeCard();
-  let heading = "Tap the P in the blue symbol or drop a pin for the lot.";
+  let heading = "Tap or drop a pin where you parked.";
   let note = "";
   let noteHtml = false;
   let enabled = false;
@@ -732,7 +732,7 @@ function sheet(state) {
     noteHtml = false;
   } else if (state?.mode === "route") {
     heading = state.pin?.name || "Trail";
-    note = "Tap a P for the lot, or drop a pin.";
+    note = "Find the lot you used, or drop a pin.";
     noteHtml = false;
   } else if (state?.mode === "pin") {
     heading = state.pin.name;
@@ -1099,10 +1099,14 @@ function queueNameSuggest(field, text) {
   if (!panel || !list || !input) return;
   const query = text.trim();
   if (query.length < 2) {
-    openSuggestPanel(panel, list, input, field === "place" ? buildLotNameRows(query) : buildTrailNameRows(query), "Type to search trails and places");
+    const nearby = field === "place" ? buildLotNameRows(query) : buildTrailNameRows(query);
+    if (nearby.length === 0) {
+      hideSuggestPanel(panel, list, input);
+      return;
+    }
+    openSuggestPanel(panel, list, input, nearby);
     return;
   }
-  openSuggestPanel(panel, list, input, mergeNameSearchRows(field, query, []), "Searching…");
   nameSuggestTimer = setTimeout(async () => {
     try {
       const pin = chosen?.pin;
@@ -1112,12 +1116,8 @@ function queueNameSuggest(field, text) {
       if (token !== nameSuggestToken) return;
       const { input: liveInput } = nameFieldNodes(field);
       if (!liveInput || liveInput.value.trim() !== query) return;
-      openSuggestPanel(
-        panel,
-        list,
-        liveInput,
-        mergeNameSearchRows(field, query, payload.choices || []),
-      );
+      const rows = mergeNameSearchRows(field, query, payload.choices || []);
+      openSuggestPanel(panel, list, liveInput, rows, "Nothing matched");
     } catch (_err) {
       if (token !== nameSuggestToken) return;
       openSuggestPanel(panel, list, input, mergeNameSearchRows(field, query, []));
@@ -1271,6 +1271,7 @@ function activityIcon(kind) {
 
 function drawPins(places) {
   clearPins();
+  clusterView = false;
   loaded = places;
   const shown = places.filter(pinShown);
   const groups = groupPins(shown.filter((pin) => !isActivityPin(pin)));
@@ -1378,20 +1379,35 @@ function offerGuide(text) {
   showToast(text, "is-warn", "guide");
 }
 
+function setMapLoading(on) {
+  document.querySelector(".map-frame")?.classList.toggle("is-loading", on);
+}
+
+function drawClusters(clusters) {
+  clearPins();
+  loaded = [];
+  clusterView = true;
+  for (const cell of clusters) {
+    const marker = window.L.marker([cell.lat, cell.lon], {
+      pane: "clusterPins",
+      icon: makeIcon("cluster", cell.count),
+      zIndexOffset: 300,
+    }).addTo(map);
+    marker.on("click", (event) => {
+      window.L.DomEvent.stopPropagation(event);
+      map.setView([cell.lat, cell.lon], Math.min((map.getZoom() || 5) + 2, 14));
+    });
+    pins.push(marker);
+  }
+}
+
 async function loadPins(keepNote = false) {
   const frame = document.getElementById("visit-map");
   if (!map || !frame || frame.offsetHeight < 40) return;
   pinsRequested = true;
   if (!keepNote) soughtLabel = "";
   const token = ++loadToken;
-  if (
-    !userMarkedSpot()
-    && toastRole !== "selection"
-    && !toastText.startsWith("I didn't find a lot")
-    && !parkingInView(loaded)
-  ) {
-    showToast("Searching…", "is-wait", "wait");
-  }
+  setMapLoading(true);
   const bounds = map.getBounds();
   try {
     const payload = await getMapView({
@@ -1401,6 +1417,23 @@ async function loadPins(keepNote = false) {
       east: bounds.getEast(),
     });
     if (token !== loadToken) return;
+    viewCounts = payload.counts || null;
+    if (payload.unavailable) {
+      showToast(
+        "Map places are not available right now. You can still drop a pin.",
+        "is-warn",
+        "guide",
+      );
+      syncFilterPills();
+      return;
+    }
+    if (Array.isArray(payload.clusters) && payload.clusters.length > 0 && !(payload.places || []).length) {
+      knownPins = new Map();
+      drawClusters(payload.clusters);
+      if (toastText === "Searching…" || toastText === ZOOM_IN_NOTE) clearToast("wait");
+      syncFilterPills();
+      return;
+    }
     if (payload.zoomed_out) {
       if (knownPins.size > 0) {
         drawPins(mergePins([]));
@@ -1440,10 +1473,12 @@ async function loadPins(keepNote = false) {
       return;
     }
     showToast(
-      "OpenStreetMap is taking a moment to respond. You can still use Drop a pin, or enter lat, lon in the search.",
+      "Places are taking a moment to load. You can still use Drop a pin, or enter lat, lon in the search.",
       "is-warn",
       "guide",
     );
+  } finally {
+    if (token === loadToken) setMapLoading(false);
   }
 }
 
@@ -1563,18 +1598,18 @@ async function search() {
     const choices = payload.choices || [];
     clearWait();
     if (choices.length === 0) {
-      const regions = matchingRegions(text);
-      if (regions.length === 1) {
-        jumpToRegion(regions[0]);
+      const countries = matchingCountries(text);
+      if (countries.length === 1) {
+        jumpToCountry(countries[0]);
         return;
       }
-      if (regions.length > 1) {
-        showRegions(text);
+      if (countries.length > 1) {
+        openSuggest(countryRows(text));
         return;
       }
       soughtLabel = "";
       showToast(
-        `Nothing matched "${text}" from here. Try a town, a shorter name, coordinates (47.488, -121.724), or Drop a pin.`,
+        `Nothing matched "${text}". Try a trail name, a country, coordinates (47.488, -121.724), or Drop a pin.`,
         "is-warn",
         "guide",
       );
@@ -1630,6 +1665,8 @@ async function usePlace(go) {
     }
     const saved = await savePlace(body);
     currentVisit.trailhead = saved;
+    const placeKey = chosen.pin ? `${chosen.pin.osm_type}:${chosen.pin.osm_id}` : `${chosen.lat},${chosen.lon}`;
+    applyKnown(chosen.pin?.known, placeKey);
     go("hikeStart");
   } catch (_err) {
     showToast("Could not save that place right now. Please try again.", "is-warn", "guide");
@@ -1789,12 +1826,6 @@ function hideSuggest() {
   document.getElementById("map-step")?.classList.remove("suggest-open");
 }
 
-function matchingRegions(query) {
-  const text = query.trim().toLowerCase();
-  if (!text) return REGIONS;
-  return REGIONS.filter((region) => region.label.toLowerCase().includes(text));
-}
-
 function openSuggest(rows, emptyText = SUGGEST_EMPTY) {
   const panel = document.getElementById("map-suggest");
   const list = document.getElementById("map-suggest-list");
@@ -1805,23 +1836,19 @@ function openSuggest(rows, emptyText = SUGGEST_EMPTY) {
   document.getElementById("map-step")?.classList.add("suggest-open");
 }
 
-function regionRows(query) {
-  return matchingRegions(query).map((region) => suggestRow(
-    region.label,
-    placeWord(region.placeType),
-    placeMark(region.placeType),
-    () => jumpToRegion(region),
+function countryRows(query) {
+  return matchingCountries(query).map((country) => suggestRow(
+    country.name,
+    "Country",
+    markHtml("drop"),
+    () => jumpToCountry(country),
   ));
 }
 
-function showRegions(query = "") {
-  openSuggest(regionRows(query));
-}
-
-function jumpToRegion(region) {
-  if (!region || !map) return;
+function jumpToCountry(country) {
+  if (!country || !map) return;
   hideSuggest();
-  viewLabel = region.label;
+  viewLabel = country.name;
   loadToken++;
   expandedKeys.clear();
   expandedZoom = null;
@@ -1829,7 +1856,7 @@ function jumpToRegion(region) {
   clearSearchChoices();
   dismissedGuide = "";
   clearToast();
-  map.setView([region.lat, region.lon], 13);
+  map.setView([country.lat, country.lon], country.zoom || 5);
   loadPins();
 }
 
@@ -1850,13 +1877,9 @@ function queueSuggest(text) {
   }
   if (text.length < 2) {
     suggestQuery = text;
-    showRegions(text);
+    hideSuggest();
     return;
   }
-  const panel = document.getElementById("map-suggest");
-  const list = document.getElementById("map-suggest-list");
-  const already = suggestQuery === text && panel && !panel.hidden && list?.querySelector(".suggest-row");
-  if (!already) openSuggest([], "Searching…");
   suggestTimer = setTimeout(async () => {
     try {
       const center = map.getCenter();
@@ -1882,10 +1905,10 @@ function showSuggest(choices, query = "") {
     const bNear = map.distance(center, [b.lat, b.lon]);
     return aNear - bNear;
   }).slice(0, 8);
-  const rows = regionRows(query);
-  const regionNames = new Set(matchingRegions(query).map((region) => region.label.toLowerCase()));
+  const rows = countryRows(query);
+  const countryNames = new Set(matchingCountries(query).map((country) => country.name.toLowerCase()));
   for (const choice of ranked) {
-    if (regionNames.has(String(choice.label || "").trim().toLowerCase())) continue;
+    if (countryNames.has(String(choice.label || "").trim().toLowerCase())) continue;
     rows.push(suggestRow(choice.label, choiceHint(choice), choiceMark(choice), () => {
       hideSuggest();
       applySearchChoice(choice);
@@ -1895,11 +1918,12 @@ function showSuggest(choices, query = "") {
 }
 
 function activityCount(kind) {
-  if (!map || !COUNTED_KINDS.has(kind)) return 0;
+  if (clusterView) return viewCounts?.[kind] || 0;
+  if (!map || !loaded.length) return 0;
   const bounds = map.getBounds();
   let count = 0;
   const seen = new Set();
-  for (const pin of knownPins.values()) {
+  for (const pin of loaded) {
     if (pin.kind !== kind || !bounds.contains([pin.lat, pin.lon])) continue;
     const key = pinKey(pin);
     if (seen.has(key)) continue;
@@ -1918,6 +1942,7 @@ function syncFilterScrollHint() {
   const atEnd = list.scrollLeft + list.clientWidth >= list.scrollWidth - 6;
   wrap.classList.toggle("has-more-end", canScroll && !atEnd);
   wrap.classList.toggle("has-more-start", canScroll && !atStart);
+  list.classList.toggle("is-fit", !canScroll);
 }
 
 function syncFilterPills() {
@@ -1929,6 +1954,7 @@ function syncFilterPills() {
     const word = btn.querySelector(".filter-word");
     const label = word ? word.textContent.trim() : key;
     const count = activityCount(key);
+    btn.hidden = count <= 0;
     const badge = btn.querySelector(".filter-count");
     if (badge) {
       badge.textContent = count > 0 ? String(count) : "";
@@ -1969,26 +1995,27 @@ export function render() {
     <div class="map-toolbar">
       <div class="map-search-wrap">
         <div class="map-search">
-          <input id="search-input" type="search" placeholder="Trail, lot, peak, or town" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="map-suggest">
+          <input id="search-input" type="search" placeholder="Trail, lot, peak, or country" autocomplete="off" role="combobox" aria-expanded="false" aria-controls="map-suggest">
         </div>
         <div id="map-suggest" class="map-suggest" hidden>
           <div id="map-suggest-list"></div>
         </div>
       </div>
-      <div class="map-filters-scroll">
-        <span class="map-filters-back" aria-hidden="true">‹</span>
-        <div id="map-filters" class="map-filters" aria-label="Activities">${activities}</div>
-        <span class="map-filters-more" aria-hidden="true">›</span>
-      </div>
     </div>
     <div class="map-frame">
       <div id="visit-map" class="map-canvas"></div>
+      <div class="map-loading" aria-hidden="true"><span class="map-dots"><span></span><span></span><span></span></span></div>
       <button type="button" id="drop-pin-btn" class="map-drop" aria-pressed="false">Drop a pin</button>
       <p id="map-toast" class="map-toast" hidden></p>
       <p id="searching-near" class="map-place" hidden></p>
     </div>
+    <div class="map-filters-scroll">
+      <span class="map-filters-back" aria-hidden="true">‹</span>
+      <div id="map-filters" class="map-filters" aria-label="Activities">${activities}</div>
+      <span class="map-filters-more" aria-hidden="true">›</span>
+    </div>
     <div id="map-sheet" class="map-sheet">
-      <h1 id="sheet-name" class="sheet-title">Tap the P in the blue symbol or drop a pin for the lot.</h1>
+      <h1 id="sheet-name" class="sheet-title">Tap or drop a pin where you parked.</h1>
       <p id="sheet-sub" class="sheet-helper" hidden></p>
       <div class="actions">
         <button type="button" class="back" id="back">&lt;&lt; Back</button>

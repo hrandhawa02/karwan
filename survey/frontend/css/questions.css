@@ -212,15 +212,11 @@
   border-radius: 10px;
 }
 
-.park-step .actions .back {
-  border: 0;
-  background: transparent;
-  padding-left: 0.2rem;
-  padding-right: 0.4rem;
-}
-
-.park-step .actions .next {
-  border-radius: 999px;
+.park-step .actions .back,
+.park-step .actions .next,
+.on-map-step .map-sheet .actions .back,
+.on-map-step .map-sheet .actions .next {
+  border-radius: 16px;
 }
 
 .facts {
@@ -245,13 +241,12 @@
   flex-direction: row;
   flex-wrap: wrap;
   align-items: stretch;
-  gap: 0.65rem;
+  gap: 0.7rem;
   width: 100%;
   margin-top: auto;
-  position: sticky;
-  bottom: 2.4rem;
-  padding-top: 1.25rem;
-  background: linear-gradient(to top, var(--bg) 75%, transparent);
+  position: static;
+  padding-top: 1rem;
+  background: none;
 }
 
 .actions .error {

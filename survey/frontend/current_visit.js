@@ -114,4 +114,32 @@ export function setAnswer(field, value) {
 
 export function resetAnswers() {
   currentVisit.answers = blankAnswers();
+  currentVisit.knownPlaceKey = "";
+  currentVisit.filledFromMap = { pay: false, bath: false };
+}
+
+export function applyKnown(known, placeKey) {
+  if (currentVisit.knownPlaceKey === placeKey) return;
+  const answers = currentVisit.answers;
+  const prior = currentVisit.filledFromMap || {};
+  if (prior.pay) {
+    answers.payRequired = null;
+    answers.payMachine = [];
+  }
+  if (prior.bath) {
+    answers.bathroomExists = null;
+    answers.bathroomCondition = null;
+  }
+  currentVisit.knownPlaceKey = placeKey;
+  currentVisit.filledFromMap = { pay: false, bath: false };
+  if (known?.payRequired === "no") {
+    answers.payRequired = "no";
+    answers.payMachine = [];
+    currentVisit.filledFromMap.pay = true;
+  }
+  if (known?.bathroomExists === "no") {
+    answers.bathroomExists = "no";
+    answers.bathroomCondition = null;
+    currentVisit.filledFromMap.bath = true;
+  }
 }

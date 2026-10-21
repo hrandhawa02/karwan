@@ -1,0 +1,67 @@
+// Name, extra search words, latitude, longitude, zoom.
+export const COUNTRIES = [
+  ["Afghanistan", [], 33.9, 67.7, 6],
+  ["Albania", [], 41.2, 20.2, 7],
+  ["Algeria", [], 28.0, 2.6, 5],
+  ["Argentina", [], -38.4, -63.6, 4],
+  ["Australia", [], -25.3, 133.8, 4],
+  ["Austria", [], 47.5, 14.6, 7],
+  ["Bangladesh", [], 23.7, 90.4, 7],
+  ["Belgium", [], 50.5, 4.5, 7],
+  ["Bhutan", [], 27.5, 90.4, 8],
+  ["Bolivia", [], -16.3, -63.6, 5],
+  ["Brazil", [], -14.2, -51.9, 4],
+  ["Canada", [], 56.1, -106.3, 4],
+  ["Chile", [], -35.7, -71.5, 4],
+  ["China", [], 35.9, 104.2, 4],
+  ["Colombia", [], 4.6, -74.3, 5],
+  ["Costa Rica", [], 9.7, -83.8, 7],
+  ["Croatia", [], 45.1, 15.2, 7],
+  ["Czechia", ["czech republic"], 49.8, 15.5, 7],
+  ["Denmark", [], 56.3, 9.5, 6],
+  ["Ecuador", [], -1.8, -78.2, 6],
+  ["Egypt", [], 26.8, 30.8, 5],
+  ["Finland", [], 61.9, 25.7, 5],
+  ["France", [], 46.2, 2.2, 5],
+  ["Germany", [], 51.2, 10.5, 5],
+  ["Greece", [], 39.1, 21.8, 6],
+  ["Iceland", [], 64.96, -19.0, 6],
+  ["India", [], 22.0, 79.0, 4],
+  ["Indonesia", [], -2.5, 118.0, 4],
+  ["Ireland", [], 53.1, -8.0, 6],
+  ["Italy", [], 42.8, 12.6, 5],
+  ["Japan", [], 36.2, 138.3, 5],
+  ["Kenya", [], 0.0, 37.9, 6],
+  ["Mexico", [], 23.6, -102.5, 5],
+  ["Morocco", [], 31.8, -7.1, 5],
+  ["Nepal", [], 28.4, 84.1, 7],
+  ["Netherlands", ["holland"], 52.1, 5.3, 7],
+  ["New Zealand", [], -40.9, 174.9, 5],
+  ["Mongolia", [], 46.9, 103.8, 5],
+  ["Norway", [], 60.5, 8.5, 4],
+  ["Pakistan", [], 30.4, 69.3, 5],
+  ["Tanzania", [], -6.4, 34.9, 5],
+  ["Peru", [], -9.2, -75.0, 5],
+  ["Poland", [], 51.9, 19.1, 6],
+  ["Portugal", [], 39.4, -8.2, 6],
+  ["Romania", [], 45.9, 24.9, 6],
+  ["South Africa", [], -30.6, 22.9, 5],
+  ["South Korea", ["korea"], 36.5, 127.8, 6],
+  ["Spain", [], 40.5, -3.7, 5],
+  ["Sweden", [], 60.1, 18.6, 4],
+  ["Switzerland", [], 46.8, 8.2, 7],
+  ["Thailand", [], 15.9, 100.9, 5],
+  ["Turkey", ["turkiye"], 38.96, 35.2, 5],
+  ["United Kingdom", ["uk", "britain", "england", "scotland", "wales"], 54.0, -2.5, 5],
+  ["United States", ["usa", "us", "america"], 39.8, -98.6, 4],
+  ["Vietnam", [], 14.1, 108.3, 5],
+];
+
+export function matchingCountries(query) {
+  const text = String(query || "").trim().toLowerCase();
+  if (text.length < 2) return [];
+  return COUNTRIES.filter(([name, aliases]) => {
+    if (name.toLowerCase().includes(text)) return true;
+    return aliases.some((alias) => alias === text || (text.length >= 3 && alias.startsWith(text)));
+  }).slice(0, 6).map(([name, _aliases, lat, lon, zoom]) => ({ name, lat, lon, zoom }));
+}

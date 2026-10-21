@@ -211,17 +211,34 @@ def kept_tags(tags):
     return {key: tags.get(key) for key in KEEP_TAGS if tags.get(key)}
 
 
+def known_answers(tags):
+    """Complete form answers already stored on the lot.
+
+    fee=no and toilets=no can be filled in. fee=yes does not say how
+    someone paid. toilets=yes does not say the condition. access=yes
+    means the public may use the lot, not that a marked accessible
+    space was there.
+    """
+    known = {}
+    if tags.get("fee") == "no":
+        known["payRequired"] = "no"
+    if tags.get("toilets") == "no":
+        known["bathroomExists"] = "no"
+    return known
+
+
 def _pin_from_row(row, accept_language):
     name_tags = json.loads(row["name_tags"] or "{}")
     tags = json.loads(row["tags"] or "{}")
     name = pick_name(name_tags, accept_language) or None
-    return {
+    kind = "trailhead" if row["kind"] == "trailhead" else "parking" if row["kind"] == "parking" else row["kind"]
+    pin = {
         "osm_type": row["osm_type"],
         "osm_id": str(row["osm_id"]),
         "name": name,
         "lat": row["lat"],
         "lon": row["lon"],
-        "kind": "trailhead" if row["kind"] == "trailhead" else "parking" if row["kind"] == "parking" else row["kind"],
+        "kind": kind,
         "facts": _facts(tags),
         "named": bool(name),
         "operator": tags.get("operator") or None,
@@ -229,6 +246,105 @@ def _pin_from_row(row, accept_language):
         "_tags": tags,
         "_name_tags": name_tags,
     }
+    if kind == "parking":
+        known = known_answers(tags)
+        if known:
+            pin["known"] = known
+    return pin
+
+
+def place_by_osm(osm_type, osm_id):
+    if not available() or osm_type not in {"node", "way", "relation"}:
+        return None
+    try:
+        osm_id = int(osm_id)
+    except (TypeError, ValueError):
+        return None
+    with connect() as conn:
+        return conn.execute(
+            "SELECT * FROM places WHERE osm_type = ? AND osm_id = ?",
+            (osm_type, osm_id),
+        ).fetchone()
+
+
+WIDE_LAT = 0.22
+WIDE_LON = 0.32
+COUNT_KINDS = ("parking", "trailhead", *ACTIVITY_KINDS)
+
+
+def _wide_view(south, west, north, east):
+    return (north - south) > WIDE_LAT or (east - west) > WIDE_LON
+
+
+def _public_counts(raw):
+    counts = {kind: int(raw.get(kind, 0)) for kind in ("parking", *ACTIVITY_KINDS)}
+    return {kind: count for kind, count in counts.items() if count}
+
+
+def _counts_in_box(conn, south, west, north, east):
+    marks = ",".join("?" for _ in COUNT_KINDS)
+    rows = conn.execute(
+        f"""
+        SELECT p.kind, COUNT(*)
+        FROM places_box AS box
+        JOIN places AS p ON p.id = box.id
+        WHERE p.kind IN ({marks})
+          AND box.min_lat <= ? AND box.max_lat >= ?
+          AND box.min_lon <= ? AND box.max_lon >= ?
+        GROUP BY p.kind
+        """,
+        (*COUNT_KINDS, north, south, east, west),
+    ).fetchall()
+    return _public_counts({kind: count for kind, count in rows})
+
+
+def _cluster_step(south, west, north, east):
+    span = max(north - south, east - west)
+    if span > 8:
+        return 1.0
+    if span > 3:
+        return 0.4
+    if span > 1:
+        return 0.15
+    return 0.06
+
+
+def _clusters_in_box(conn, south, west, north, east):
+    step = _cluster_step(south, west, north, east)
+    marks = ",".join("?" for _ in COUNT_KINDS)
+    rows = conn.execute(
+        f"""
+        SELECT p.kind, COUNT(*) AS n, AVG(p.lat) AS lat, AVG(p.lon) AS lon,
+               CAST(p.lat / ? AS INT) AS gy, CAST(p.lon / ? AS INT) AS gx
+        FROM places_box AS box
+        JOIN places AS p ON p.id = box.id
+        WHERE p.kind IN ({marks})
+          AND box.min_lat <= ? AND box.max_lat >= ?
+          AND box.min_lon <= ? AND box.max_lon >= ?
+        GROUP BY gy, gx, p.kind
+        """,
+        (step, step, *COUNT_KINDS, north, south, east, west),
+    ).fetchall()
+    cells = {}
+    raw = {}
+    for kind, count, lat, lon, gy, gx in rows:
+        cell = cells.setdefault((gy, gx), {"lat": 0.0, "lon": 0.0, "n": 0})
+        cell["lat"] += lat * count
+        cell["lon"] += lon * count
+        cell["n"] += count
+        raw[kind] = raw.get(kind, 0) + count
+    clusters = []
+    for cell in cells.values():
+        total = cell["n"]
+        if total <= 0:
+            continue
+        clusters.append({
+            "lat": cell["lat"] / total,
+            "lon": cell["lon"] / total,
+            "count": int(total),
+        })
+    clusters.sort(key=lambda item: item["count"], reverse=True)
+    return clusters[:120], _public_counts(raw)
 
 
 def _rows_in_box(conn, south, west, north, east, kinds):
@@ -249,6 +365,16 @@ def _rows_in_box(conn, south, west, north, east, kinds):
 def view_places(south, west, north, east, accept_language=""):
     if not available():
         return None
+    if _wide_view(south, west, north, east):
+        with connect() as conn:
+            clusters, counts = _clusters_in_box(conn, south, west, north, east)
+        return {
+            "searching_near": None,
+            "zoomed_out": False,
+            "places": [],
+            "clusters": clusters,
+            "counts": counts,
+        }
     center_lat = (south + north) / 2
     center_lon = (west + east) / 2
     pad_lat = 0.45 / 111
@@ -278,6 +404,7 @@ def view_places(south, west, north, east, accept_language=""):
             east,
             ACTIVITY_KINDS,
         )
+        counts = _counts_in_box(conn, south, west, north, east)
     pins = [_pin_from_row(row, accept_language) for row in rows]
     trailheads = [pin for pin in pins if pin["kind"] == "trailhead"]
     route_anchors = []
@@ -373,14 +500,19 @@ def view_places(south, west, north, east, accept_language=""):
         "searching_near": None,
         "zoomed_out": False,
         "places": places,
+        "clusters": [],
+        "counts": counts,
     }
 
 
 def _match_query(text):
     tokens = TOKEN_RE.findall(text.casefold())
     if not tokens:
-        return ""
-    return " AND ".join(f'"{token}"*' for token in tokens[:8])
+        return "", ""
+    words = tokens[:8]
+    exact = " AND ".join(f'"{token}"' for token in words)
+    prefix = " AND ".join(f'"{token}"*' for token in words)
+    return exact, prefix
 
 
 def _choice(pin, accept_language):
@@ -423,21 +555,36 @@ def _choice(pin, accept_language):
 def search_choices(text, lat, lon, accept_language=""):
     if not available():
         return None
-    match = _match_query(text)
-    if not match:
+    exact, prefix = _match_query(text)
+    if not exact:
         return []
     with connect() as conn:
         try:
             rows = conn.execute(
                 """
-                SELECT p.*
+                SELECT p.*, bm25(places_fts) AS rank
                 FROM places_fts
                 JOIN places AS p ON p.id = places_fts.rowid
                 WHERE places_fts MATCH ?
-                LIMIT 80
+                ORDER BY rank
+                LIMIT 40
                 """,
-                (match,),
+                (exact,),
             ).fetchall()
+            if len(rows) < 8:
+                more = conn.execute(
+                    """
+                    SELECT p.*, bm25(places_fts) AS rank
+                    FROM places_fts
+                    JOIN places AS p ON p.id = places_fts.rowid
+                    WHERE places_fts MATCH ?
+                    ORDER BY rank
+                    LIMIT 40
+                    """,
+                    (prefix,),
+                ).fetchall()
+                seen = {row["id"] for row in rows}
+                rows.extend(row for row in more if row["id"] not in seen)
         except sqlite3.OperationalError:
             return []
     pins = [_pin_from_row(row, accept_language) for row in rows]

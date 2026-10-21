@@ -24,6 +24,7 @@ export function render() {
     <div class="park-step">
       <h1>How could someone pay to park?</h1>
       <p class="hint">Check every way that fits. No payment and I didn’t look each stand on their own.</p>
+      ${currentVisit.filledFromMap?.pay ? `<p class="hint">Filled from the map listing. Change it if this lot was different.</p>` : ""}
       ${sceneCards("payLot", cards, selected(), true)}
       ${actions("Next >>")}
     </div>

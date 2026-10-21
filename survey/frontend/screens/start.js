@@ -14,6 +14,35 @@ function legalLine(settle) {
   `;
 }
 
+function scenarios() {
+  const lines = [
+    ["Was the lot already full?", "/survey/scenes/park-full.jpg"],
+    ["Was the pay machine down?", "/survey/scenes/pay-card.jpg"],
+    ["Were the bathrooms open?", "/survey/scenes/bath-closed.jpg"],
+  ];
+  const items = lines.map(([line, image]) => `
+    <li>
+      <span>${line}</span>
+      <img src="${image}" alt="">
+    </li>
+  `).join("");
+  return `<ul class="scenarios">${items}</ul>`;
+}
+
+function howSteps() {
+  const steps = [
+    ["1", "Pick the parking lot you used"],
+    ["2", "Note if it was full, if the pay machine worked, and if the bathrooms were open"],
+  ];
+  const items = steps.map(([num, title]) => `
+    <li>
+      <span class="how-num">${num}</span>
+      <span class="how-title">${title}</span>
+    </li>
+  `).join("");
+  return `<ol class="how-row" aria-label="How">${items}</ol>`;
+}
+
 export function render() {
   if (currentVisit.closed) {
     return `
@@ -31,20 +60,10 @@ export function render() {
   }
   return `
     <h1>For the trail.</h1>
-    <p class="copy">From the people who were just there.</p>
-    <p class="copy">
-      Tell the rest of us about the cars, the pay machine, and the bathrooms.
-    </p>
-    <p class="copy">A few questions. About a minute.</p>
-    <p class="copy">
-      The notes come first. <span class="name">Karwan</span> grows from them,
-      once enough of us add a visit.
-    </p>
-    <p class="copy">
-      No name, no email, no phone number. No personal data is
-      collected, stored, or marketed. Your note stays with Karwan.
-    </p>
+    ${scenarios()}
+    <p class="lead-note">It changes through the day, so the next person can know before they drive out.</p>
+    ${howSteps()}
+    <p class="quiet">No name, no email, no phone number.</p>
     ${actions("Add a visit")}
-    ${legalLine(false)}
   `;
 }

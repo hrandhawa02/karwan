@@ -353,9 +353,7 @@ def map_view(south, west, north, east, accept_language=""):
         _snap(north, 0.02, True),
         _snap(east, 0.02, True),
     )
-    center_lat = (south + north) / 2
-    center_lon = (west + east) / 2
-    key = f"view:9:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    key = f"view:10:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
     cached = _recall(key)
     if cached is not None:
         return cached
@@ -363,82 +361,14 @@ def map_view(south, west, north, east, accept_language=""):
     if local is not None:
         _remember(key, local, WEEK)
         return local
-    if too_wide(south, west, north, east):
-        return _zoomed_out_payload()
-    area = _box(south, west, north, east)
-    query = f"""
-[out:json][timeout:15];
-(
-  node["highway"="trailhead"]{area};
-  way["highway"="trailhead"]{area};
-  node["amenity"="parking"]{area};
-  way["amenity"="parking"]{area};
-  way(around:8000,{center_lat},{center_lon})["route"~"^(hiking|foot|bicycle)$"];
-  relation(around:8000,{center_lat},{center_lon})["route"~"^(hiking|foot|bicycle)$"];
-  node["place"~"^(town|city)$"](around:20000,{center_lat},{center_lon});
-);
-out center tags;
-"""
-    try:
-        elements = _overpass(query)
-    except MapLookupFailed:
-        stale = _recall(key, allow_stale=True)
-        if stale is not None:
-            return stale
-        raise
-    raw_pins = []
-    trailheads = []
-    parking_lots = []
-    route_anchors = _route_anchors(elements)
-    for element in elements:
-        pin = _pin(element)
-        if pin is None:
-            continue
-        if pin["kind"] == "trailhead":
-            trailheads.append(pin)
-        else:
-            tags = element.get("tags") or {}
-            if not _excluded_parking(tags, pin["name"]):
-                parking_lots.append(pin)
-
-    raw_pins.extend(_keep_trail_parking_lots(parking_lots, trailheads, route_anchors))
-
-    for th in trailheads:
-        near_trail = None
-        if not th["named"]:
-            best_km = 0.45
-            for other in raw_pins:
-                if other["named"]:
-                    km = _kilometers(th["lat"], th["lon"], other["lat"], other["lon"])
-                    if km < best_km:
-                        best_km = km
-                        near_trail = other["name"]
-        th["near_trail"] = near_trail
-        raw_pins.append(th)
-
-    pins = []
-    for pin in raw_pins:
-        distance = _kilometers(center_lat, center_lon, pin["lat"], pin["lon"])
-        if pin["kind"] == "trailhead":
-            rank = 0
-        elif pin["named"]:
-            rank = 1
-        elif pin.get("near_trail"):
-            rank = 2
-        else:
-            rank = 3
-        pins.append((rank, distance, pin))
-    pins.sort(key=lambda item: (item[0], item[1]))
-    places = []
-    for _rank, _distance, pin in pins[:150]:
-        places.append(pin)
-    payload = {
-        "searching_near": _town_name(elements, center_lat, center_lon),
+    return {
+        "searching_near": None,
         "zoomed_out": False,
-        "places": places,
+        "unavailable": True,
+        "places": [],
+        "clusters": [],
+        "counts": {},
     }
-    _remember_many([(key, payload), *_element_rows(elements)], WEEK)
-    return payload
 
 
 def search_nearby(text, lat, lon):
@@ -699,66 +629,22 @@ def search_map(text, lat, lon, accept_language=""):
     query_text = text.strip()
     if len(query_text) < 2:
         return {"choices": []}
-    key = f"mapsearch:7:{_language_key(accept_language)}:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    key = f"mapsearch:8:{_language_key(accept_language)}:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
     cached = _recall(key)
     if cached is not None:
         return cached
     from survey.backend.outdoors import available, search_choices
 
+    choices = []
     if available():
         try:
-            local_hits = search_choices(query_text, lat, lon, accept_language)
+            local_hits = search_choices(query_text, lat, lon, accept_language) or []
         except Exception:
             log.warning("local outdoors search failed", exc_info=True)
-            local_hits = None
-        if local_hits:
-            choices = []
-            seen = set()
-            for choice in local_hits:
-                _append_choice(choices, seen, choice)
-            for place in find_places(query_text, lat, lon):
-                _append_choice(choices, seen, place)
-            _attach_where(choices)
-            payload = {"choices": _by_distance(choices, lat, lon)}
-            _remember(key, payload, WEEK)
-            return payload
-    choices = []
-    seen = set()
-
-    def _pins():
-        try:
-            return search_nearby(query_text, lat, lon)
-        except MapLookupFailed:
-            return []
-
-    def _trails():
-        try:
-            return search_trails(query_text, lat, lon)
-        except MapLookupFailed:
-            return []
-
-    with ThreadPoolExecutor(max_workers=3) as pool:
-        pin_job = pool.submit(_pins)
-        trail_job = pool.submit(_trails)
-        place_job = pool.submit(find_places, query_text, lat, lon)
-        pin_hits = pin_job.result()
-        trail_hits = trail_job.result()
-        place_hits = place_job.result()
-
-    for pin in pin_hits:
-        _append_choice(choices, seen, {
-            "kind": "pin",
-            "label": pin["name"],
-            "detail": "Trailhead" if pin["kind"] == "trailhead" else "Parking",
-            "lat": pin["lat"],
-            "lon": pin["lon"],
-            "pin": pin,
-        })
-    for trail in trail_hits:
-        _append_choice(choices, seen, trail)
-    for place in place_hits:
-        _append_choice(choices, seen, place)
-    _attach_where(choices)
+            local_hits = []
+        seen = set()
+        for choice in local_hits:
+            _append_choice(choices, seen, choice)
     payload = {"choices": _by_distance(choices, lat, lon)}
     _remember(key, payload, WEEK)
     return payload
@@ -873,16 +759,15 @@ def store_place(conn, body):
     if trail_name is None:
         return None
     if body.osm_type and body.osm_id:
-        element = _tags_of(body.osm_type, body.osm_id)
-        if element is None:
+        from survey.backend.outdoors import place_by_osm
+
+        row = place_by_osm(body.osm_type, body.osm_id)
+        if row is None:
             return None
-        pin = _pin(element)
-        if pin is None:
-            return None
-        tags = element.get("tags") or {}
+        tags = json.loads(row["tags"] or "{}")
         capacity, fee, surface, hours, toilet = _numbers(tags)
-        lat, lon = pin["lat"], pin["lon"]
-        name = pin["name"]
+        lat, lon = row["lat"], row["lon"]
+        name = (row["name"] or "").strip()
         if name:
             pending = 0
         else:
@@ -890,9 +775,9 @@ def store_place(conn, body):
             if len(name) < 2 or len(name) > 80:
                 return None
             pending = 1
-        if pin["kind"] == "trailhead" and not trail_name:
+        if row["kind"] == "trailhead" and not trail_name:
             trail_name = name
-        osm_type, osm_id = pin["osm_type"], pin["osm_id"]
+        osm_type, osm_id = row["osm_type"], str(row["osm_id"])
     else:
         name = (body.name or "").strip()
         if len(name) < 2 or len(name) > 80 or body.lat is None or body.lon is None:
