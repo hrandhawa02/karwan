@@ -1801,7 +1801,8 @@ function suggestRow(label, hint, markHtml, onClick, where, detail) {
   const region = String(where || "").trim();
   if (place && place !== label) extras.push(["suggest-detail", place]);
   if (region && region !== place) extras.push(["suggest-where", region]);
-  if (hint && extras.length < 2) extras.push(["suggest-hint", hint]);
+  const sameAsShown = extras.some(([, line]) => line.toLowerCase() === String(hint || "").trim().toLowerCase());
+  if (hint && !sameAsShown && extras.length < 2) extras.push(["suggest-hint", hint]);
   for (const [className, line] of extras.slice(0, 2)) {
     const node = document.createElement("span");
     node.className = className;
