@@ -84,6 +84,24 @@ ACTIVITY_KINDS = (
 )
 ACTIVITY_CAP = 40
 TOKEN_RE = re.compile(r"[\w]+", re.UNICODE)
+COUNTRY_SHORT = {
+    "United States of America": "United States",
+    "United Republic of Tanzania": "Tanzania",
+    "Czech Republic": "Czechia",
+    "Republic of Serbia": "Serbia",
+    "Republic of the Congo": "Congo",
+    "Democratic Republic of the Congo": "DR Congo",
+    "The Bahamas": "Bahamas",
+}
+
+
+def place_where(state, country):
+    """State and country for a search line. Country alone when they match."""
+    state = (state or "").strip()
+    country = COUNTRY_SHORT.get((country or "").strip(), (country or "").strip())
+    if state and country and state.casefold() != country.casefold():
+        return f"{state}, {country}"
+    return country or state
 
 
 def available():
@@ -246,6 +264,10 @@ def _pin_from_row(row, accept_language):
         "_tags": tags,
         "_name_tags": name_tags,
     }
+    if "region_country" in row.keys():
+        where = place_where(row["region_state"], row["region_country"])
+        if where:
+            pin["where"] = where
     if kind == "parking":
         known = known_answers(tags)
         if known:
@@ -519,9 +541,13 @@ def _choice(pin, accept_language):
     kind = pin["outdoor_kind"]
     label = pin["name"] or DETAIL.get(kind, "Place")
     if kind in {"parking", "trailhead"}:
-        public = {key: value for key, value in pin.items() if not key.startswith("_") and key != "outdoor_kind"}
+        public = {
+            key: value
+            for key, value in pin.items()
+            if not key.startswith("_") and key not in {"outdoor_kind", "where"}
+        }
         public["kind"] = kind
-        return {
+        choice = {
             "kind": "pin",
             "label": label,
             "detail": DETAIL[kind],
@@ -529,27 +555,66 @@ def _choice(pin, accept_language):
             "lon": pin["lon"],
             "pin": public,
         }
-    if kind == "hike":
-        choice_kind = "trail"
-        place_type = None
-    elif kind == "peak":
-        choice_kind = "peak"
-        place_type = "peak"
     else:
-        choice_kind = "place"
-        place_type = kind
-    choice = {
-        "kind": choice_kind,
-        "label": label,
-        "detail": DETAIL.get(kind, "Place"),
-        "lat": pin["lat"],
-        "lon": pin["lon"],
-    }
-    if place_type:
-        choice["placeType"] = place_type
-    if accept_language:
-        choice["label"] = pick_name(pin.get("_name_tags") or {}, accept_language) or label
+        if kind == "hike":
+            choice_kind = "trail"
+            place_type = None
+        elif kind == "peak":
+            choice_kind = "peak"
+            place_type = "peak"
+        else:
+            choice_kind = "place"
+            place_type = kind
+        choice = {
+            "kind": choice_kind,
+            "label": label,
+            "detail": DETAIL.get(kind, "Place"),
+            "lat": pin["lat"],
+            "lon": pin["lon"],
+        }
+        if place_type:
+            choice["placeType"] = place_type
+        if accept_language:
+            choice["label"] = pick_name(pin.get("_name_tags") or {}, accept_language) or label
+    where = pin.get("where")
+    if where:
+        choice["where"] = where
     return choice
+
+
+def _regions_ready(conn):
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'place_regions'"
+    ).fetchone()
+    return row is not None
+
+
+def _match_places(conn, match, regions):
+    if regions:
+        sql = """
+            SELECT p.*, r.state AS region_state, r.country AS region_country, hits.rank
+            FROM (
+                SELECT rowid, bm25(places_fts) AS rank
+                FROM places_fts
+                WHERE places_fts MATCH ?
+                ORDER BY rank
+                LIMIT 40
+            ) AS hits
+            JOIN places AS p ON p.id = hits.rowid
+            LEFT JOIN place_regions AS pr ON pr.id = p.id
+            LEFT JOIN regions AS r ON r.id = pr.region_id
+            ORDER BY hits.rank
+        """
+    else:
+        sql = """
+            SELECT p.*, bm25(places_fts) AS rank
+            FROM places_fts
+            JOIN places AS p ON p.id = places_fts.rowid
+            WHERE places_fts MATCH ?
+            ORDER BY rank
+            LIMIT 40
+        """
+    return conn.execute(sql, (match,)).fetchall()
 
 
 def search_choices(text, lat, lon, accept_language=""):
@@ -560,29 +625,10 @@ def search_choices(text, lat, lon, accept_language=""):
         return []
     with connect() as conn:
         try:
-            rows = conn.execute(
-                """
-                SELECT p.*, bm25(places_fts) AS rank
-                FROM places_fts
-                JOIN places AS p ON p.id = places_fts.rowid
-                WHERE places_fts MATCH ?
-                ORDER BY rank
-                LIMIT 40
-                """,
-                (exact,),
-            ).fetchall()
+            regions = _regions_ready(conn)
+            rows = _match_places(conn, exact, regions)
             if len(rows) < 8:
-                more = conn.execute(
-                    """
-                    SELECT p.*, bm25(places_fts) AS rank
-                    FROM places_fts
-                    JOIN places AS p ON p.id = places_fts.rowid
-                    WHERE places_fts MATCH ?
-                    ORDER BY rank
-                    LIMIT 40
-                    """,
-                    (prefix,),
-                ).fetchall()
+                more = _match_places(conn, prefix, regions)
                 seen = {row["id"] for row in rows}
                 rows.extend(row for row in more if row["id"] not in seen)
         except sqlite3.OperationalError:

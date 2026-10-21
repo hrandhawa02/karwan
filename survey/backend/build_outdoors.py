@@ -248,6 +248,9 @@ class Collector:
             print(f"  {kind}: {count:,}", flush=True)
         total = self.conn.execute("SELECT COUNT(*) FROM places").fetchone()[0]
         print(f"Wrote {total:,} places", flush=True)
+        from survey.backend.regions import assign_regions
+
+        assign_regions(self.conn)
         self.conn.close()
         if self.index_path.exists():
             self.index_path.unlink()

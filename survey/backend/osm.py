@@ -629,7 +629,7 @@ def search_map(text, lat, lon, accept_language=""):
     query_text = text.strip()
     if len(query_text) < 2:
         return {"choices": []}
-    key = f"mapsearch:8:{_language_key(accept_language)}:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
+    key = f"mapsearch:9:{_language_key(accept_language)}:{query_text.casefold()}:{round(lat, 1)}:{round(lon, 1)}"
     cached = _recall(key)
     if cached is not None:
         return cached
