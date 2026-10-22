@@ -17,7 +17,7 @@ export function render() {
     <div class="park-step">
       <h1>How were the bathrooms?</h1>
       ${sceneCards("bathroomCondition", cards, currentVisit.answers.bathroomCondition, false)}
-      ${actions("Next >>")}
+      ${actions("Note bathrooms")}
     </div>
   `;
 }

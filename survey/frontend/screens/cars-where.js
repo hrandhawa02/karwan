@@ -20,7 +20,7 @@ export function render() {
       <h1>What did parking look like when you pulled in?</h1>
       <p class="hint">Check all that apply — you or what you saw. I didn’t look is only by itself.</p>
       ${sceneCards("carsWhere", cards, currentVisit.answers.carsWhere, true)}
-      ${actions("Next >>")}
+      ${actions("Note the lot")}
     </div>
   `;
 }

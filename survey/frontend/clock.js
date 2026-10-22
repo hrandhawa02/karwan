@@ -61,7 +61,22 @@ export function wallTimeToUtc(localValue, timeZone) {
   return new Date(utc).toISOString();
 }
 
-export function formatWall(localValue, zoneLabel) {
+export function shortZoneCode(localValue, timeZone) {
+  if (!timeZone) return "";
+  try {
+    const iso = wallTimeToUtc(localValue, timeZone);
+    const stamp = iso ? new Date(iso) : new Date();
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone,
+      timeZoneName: "short",
+    }).formatToParts(stamp);
+    return parts.find((part) => part.type === "timeZoneName")?.value || timeZone;
+  } catch {
+    return timeZone;
+  }
+}
+
+export function formatWall(localValue, zoneOrLabel) {
   const numbers = partsOf(
     localValue,
     /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})$/,
@@ -74,7 +89,10 @@ export function formatWall(localValue, zoneLabel) {
     dateStyle: "medium",
     timeStyle: "short",
   }).format(stamp);
-  return `${clock} ${zoneLabel}`;
+  const code = zoneOrLabel && zoneOrLabel.includes("/")
+    ? shortZoneCode(localValue, zoneOrLabel)
+    : zoneOrLabel;
+  return code ? `${clock} ${code}` : clock;
 }
 
 export const earliestArrival = "2024-01-01T00:00";

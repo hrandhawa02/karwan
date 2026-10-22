@@ -18,7 +18,7 @@ export function render() {
       <h1>Were there accessible parking spaces?</h1>
       <p class="hint">Marked spaces. Not how many, and not whether you used one.</p>
       ${sceneCards("accessible", cards, currentVisit.answers.accessible, false)}
-      ${actions("Next >>")}
+      ${actions("Note the spaces")}
     </div>
   `;
 }

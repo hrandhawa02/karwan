@@ -1,4 +1,4 @@
-import { actions } from "../buttons.js";
+import { actions, scenePicture } from "../buttons.js";
 import { currentVisit } from "../current_visit.js";
 
 function legalLine(settle) {
@@ -23,7 +23,7 @@ function scenarios() {
   const items = lines.map(([line, image]) => `
     <li>
       <span>${line}</span>
-      <img src="${image}" alt="">
+      ${scenePicture(image, false)}
     </li>
   `).join("");
   return `<ul class="scenarios">${items}</ul>`;

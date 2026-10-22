@@ -1,4 +1,4 @@
-import { esc } from "../buttons.js";
+import { actions, esc } from "../buttons.js";
 import { formatWall } from "../clock.js";
 import { currentVisit } from "../current_visit.js";
 import { labels } from "../labels.js";
@@ -36,7 +36,7 @@ function row(label, value) {
 
 export function noteText() {
   const answers = currentVisit.answers;
-  const zone = currentVisit.trailhead.zone_label;
+  const zone = currentVisit.trailhead.timezone || currentVisit.trailhead.zone_label;
   const cars = answers.carsWhere.map((value) => labels.carsWhere[value]).join(", ");
   return [
     "Karwan",
@@ -56,7 +56,7 @@ export function noteText() {
 
 function rows() {
   const answers = currentVisit.answers;
-  const zone = currentVisit.trailhead.zone_label;
+  const zone = currentVisit.trailhead.timezone || currentVisit.trailhead.zone_label;
   const cars = answers.carsWhere.map((value) => labels.carsWhere[value]).join(", ");
   return [
     row("Got there", formatWall(answers.hikeStart, zone)),
@@ -69,18 +69,11 @@ function rows() {
 }
 
 export function render() {
-  const error = currentVisit.answers.saveError
-    ? `<p class="error" role="alert">${esc(currentVisit.answers.saveError)}</p>`
-    : "";
-  const label = currentVisit.saving ? "Saving" : "Save";
-  const disabled = currentVisit.saving ? "disabled" : "";
   return `
-    <h1>Check this visit</h1>
-    <dl class="check">${rows()}</dl>
-    ${error}
-    <div class="actions">
-      <button type="button" class="back" id="back">&lt;&lt; Back</button>
-      <button type="button" class="next" id="save" ${disabled}>${label}</button>
+    <div class="park-step">
+      <h1>Check this visit</h1>
+      <dl class="check">${rows()}</dl>
+      ${actions("Submit this note", "This sends the lot note.")}
     </div>
   `;
 }

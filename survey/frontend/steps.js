@@ -2,7 +2,7 @@ import { arrivalInRange } from "./clock.js";
 import { currentVisit } from "./current_visit.js";
 
 export function stepOrder() {
-  return ["hikeStart", "stay", "carsWhere", "accessible", "payRequired", "bathroom"];
+  return ["hikeStart", "stay", "carsWhere", "accessible", "payRequired", "bathroom", "check"];
 }
 
 export function onLastStep() {

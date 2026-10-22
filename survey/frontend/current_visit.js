@@ -19,6 +19,7 @@ export const currentVisit = {
   stepId: "start",
   saving: false,
   savedNote: "",
+  arrivalWeekEnd: "",
   answers: blankAnswers(),
 };
 

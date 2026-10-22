@@ -2019,7 +2019,7 @@ export function render() {
       <h1 id="sheet-name" class="sheet-title">Tap or drop a pin where you parked.</h1>
       <p id="sheet-sub" class="sheet-helper" hidden></p>
       <div class="actions">
-        <button type="button" class="back" id="back">&lt;&lt; Back</button>
+        <button type="button" class="back" id="back">Back</button>
         <button type="button" class="next" id="map-next" disabled>Continue</button>
       </div>
     </div>

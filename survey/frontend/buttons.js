@@ -31,20 +31,35 @@ export function choices(field, options, selected) {
   return `<div class="choices">${buttons.join("")}</div>`;
 }
 
+export function scenePicture(image, lazy) {
+  const base = String(image).replace(/\.(avif|webp|jpe?g)$/i, "");
+  const loading = lazy ? "lazy" : "eager";
+  const priority = lazy ? "" : ` fetchpriority="high"`;
+  return `<picture>`
+    + `<source srcset="${esc(base)}.avif" type="image/avif">`
+    + `<source srcset="${esc(base)}.webp" type="image/webp">`
+    + `<img src="${esc(base)}.jpg" alt="" loading="${loading}" decoding="async"${priority}>`
+    + `</picture>`;
+}
+
 export function sceneCards(field, cards, selected, multi) {
-  const buttons = cards.map(({ value, label, note, image }) => {
+  const layout = cards.length <= 3 ? "is-wide" : "is-grid";
+  const buttons = cards.map(({ value, label, note, image }, index) => {
     const on = multi ? selected.includes(value) : selected === value;
     const role = multi ? "checkbox" : "radio";
+    const lazy = layout === "is-grid" && index >= 2;
     return `<button type="button" class="park-card${on ? " selected" : ""}" data-field="${field}" data-value="${esc(value)}" role="${role}" aria-checked="${on}">
-      <span class="park-tick" aria-hidden="true"></span>
+      <span class="park-scene">
+        ${scenePicture(image, lazy)}
+        <span class="park-tick" aria-hidden="true"></span>
+      </span>
       <span class="park-copy">
         <span class="park-title">${esc(label)}</span>
         <span class="park-note">${esc(note)}</span>
       </span>
-      <span class="park-scene"><img src="${image}" alt=""></span>
     </button>`;
   });
-  return `<div class="park-cards">${buttons.join("")}</div>`;
+  return `<div class="park-cards ${layout}">${buttons.join("")}</div>`;
 }
 
 export function checks(field, options, selected) {
@@ -54,20 +69,22 @@ export function checks(field, options, selected) {
   return `<div class="choices">${buttons.join("")}</div>`;
 }
 
-export function actions(primary) {
+export function actions(primary, note) {
   const showBack = currentVisit.stepId !== "start" && currentVisit.stepId !== "thanks";
   const back = showBack
-    ? `<button type="button" class="back" id="back">&lt;&lt; Back</button>`
+    ? `<button type="button" class="back" id="back">Back</button>`
     : "";
   const last = onLastStep();
-  const label = last ? (currentVisit.saving ? "Submitting" : "Submit") : primary;
+  const label = last ? (currentVisit.saving ? "Sending" : "Submit this note") : primary;
   const id = last ? "save" : "next";
   const enabled = ready() && !currentVisit.saving ? "" : "disabled";
   const error = currentVisit.answers.saveError
     ? `<p class="error" role="alert">${esc(currentVisit.answers.saveError)}</p>`
     : "";
+  const line = note ? `<p class="hint send-note">${esc(note)}</p>` : "";
   return `<div class="actions">
     ${error}
+    ${line}
     ${back}
     <button type="button" class="next" id="${id}" ${enabled}>${label}</button>
   </div>`;

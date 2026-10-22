@@ -17,7 +17,7 @@ export function render() {
       <h1>Day trip or overnight?</h1>
       <p class="hint">Pick the one that fits. Overnight means a car was still at the lot after that calendar day.</p>
       ${sceneCards("stay", cards, currentVisit.answers.stay, false)}
-      ${actions("Next >>")}
+      ${actions("Set the stay")}
     </div>
   `;
 }

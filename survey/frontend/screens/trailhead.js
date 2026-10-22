@@ -11,6 +11,6 @@ export function render() {
     <p class="copy">${intro}</p>
     <h1>What we already know</h1>
     <ul class="facts">${facts}</ul>
-    ${actions("Next >>")}
+    ${actions("Use this lot")}
   `;
 }

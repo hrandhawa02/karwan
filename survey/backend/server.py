@@ -1,4 +1,5 @@
 import logging
+import mimetypes
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -23,6 +24,8 @@ from survey.backend.save_visit import VisitIn, save_visit
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "survey" / "frontend"
+mimetypes.add_type("image/avif", ".avif")
+mimetypes.add_type("image/webp", ".webp")
 API_V1 = "/api/v1"
 VISITS_PATH = f"{API_V1}/visits"
 log = logging.getLogger("karwan")
@@ -70,9 +73,31 @@ async def keep_private(request, call_next):
         response = JSONResponse(status_code=403, content={"detail": "closed"})
     else:
         response = await call_next(request)
-    response.headers["Cache-Control"] = "no-store"
+    response.headers["Cache-Control"] = cache_control(request.url.path)
     response.headers["X-Robots-Tag"] = "noindex"
     return response
+
+
+ICON_PATHS = {
+    "/favicon.ico",
+    "/favicon.svg",
+    "/apple-touch-icon.png",
+    "/survey/favicon.ico",
+    "/survey/favicon.svg",
+    "/survey/apple-touch-icon.png",
+}
+
+
+def cache_control(path: str) -> str:
+    if path.startswith("/api/"):
+        return "no-store"
+    if path in ICON_PATHS:
+        return "no-cache"
+    if path.lower().endswith((
+        ".avif", ".webp", ".jpg", ".jpeg", ".png", ".svg", ".ico", ".woff2",
+    )):
+        return "public, max-age=604800, stale-while-revalidate=86400"
+    return "no-cache"
 
 
 @app.exception_handler(HTTPException)
@@ -99,6 +124,21 @@ async def quiet_invalid_visit(request: Request, _exc: RequestValidationError):
             content={"detail": "This visit could not be saved."},
         )
     return JSONResponse(status_code=422, content={"detail": "invalid"})
+
+
+@app.get("/favicon.ico")
+def favicon_ico():
+    return FileResponse(FRONTEND / "favicon.ico")
+
+
+@app.get("/favicon.svg")
+def favicon_svg():
+    return FileResponse(FRONTEND / "favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/apple-touch-icon.png")
+def apple_icon():
+    return FileResponse(FRONTEND / "apple-touch-icon.png")
 
 
 @app.get("/")

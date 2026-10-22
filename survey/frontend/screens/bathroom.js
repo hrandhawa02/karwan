@@ -17,7 +17,7 @@ export function render() {
       <p class="hint">Check every one that fits. No bathroom and I didn’t look each stand on their own.</p>
       ${currentVisit.filledFromMap?.bath ? `<p class="hint">Filled from the map listing. Change it if this lot was different.</p>` : ""}
       ${sceneCards("bathroomLot", cards, bathSelection(), true)}
-      ${actions("Next >>")}
+      ${actions("Note bathrooms")}
     </div>
   `;
 }

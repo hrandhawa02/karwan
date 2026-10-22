@@ -46,7 +46,11 @@ main {
   margin: 0 auto;
   display: flex;
   flex-direction: column;
-  padding: max(1.25rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+  padding:
+    0
+    max(1.25rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
 }
 
 #screen {
@@ -68,7 +72,7 @@ select {
   max-height: 100svh;
   overflow: hidden;
   padding:
-    max(0.65rem, env(safe-area-inset-top))
+    calc(env(safe-area-inset-top, 0px) + 0.65rem)
     max(0.75rem, env(safe-area-inset-right))
     max(0.85rem, env(safe-area-inset-bottom))
     max(0.75rem, env(safe-area-inset-left));
@@ -76,5 +80,9 @@ select {
 
 .on-map-step.map-naming main {
   max-width: 32rem;
-  padding: max(1.25rem, env(safe-area-inset-top)) max(1.25rem, env(safe-area-inset-right)) max(1rem, env(safe-area-inset-bottom)) max(1.25rem, env(safe-area-inset-left));
+  padding:
+    calc(env(safe-area-inset-top, 0px) + 1rem)
+    max(1.25rem, env(safe-area-inset-right))
+    max(1rem, env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
 }
