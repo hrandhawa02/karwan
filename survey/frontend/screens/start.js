@@ -16,31 +16,32 @@ function legalLine(settle) {
 
 function scenarios() {
   const lines = [
-    ["Was the lot already full?", "/survey/scenes/park-full.jpg"],
-    ["Was the pay machine down?", "/survey/scenes/pay-card.jpg"],
-    ["Were the bathrooms open?", "/survey/scenes/bath-closed.jpg"],
+    [
+      "Live Parking Status", 
+      "Check if parking spaces are wide open, filling fast, or fully packed.", 
+      "/survey/scenes/park-full.jpg"
+    ],
+    [
+      "Pay Machine Status", 
+      "Note if local pay boxes work smoothly or if machines are down.", 
+      "/survey/scenes/pay-card.jpg"
+    ],
+    [
+      "Bathroom Availability", 
+      "Log if regional trailhead restrooms are open or locked up.", 
+      "/survey/scenes/bath-closed.jpg"
+    ],
   ];
-  const items = lines.map(([line, image]) => `
+  const items = lines.map(([title, subtitle, image]) => `
     <li>
-      <span>${line}</span>
       ${scenePicture(image, false)}
+      <div class="metric-text">
+        <strong>${title}</strong>
+        <em>${subtitle}</em>
+      </div>
     </li>
   `).join("");
   return `<ul class="scenarios">${items}</ul>`;
-}
-
-function howSteps() {
-  const steps = [
-    ["1", "Pick the parking lot you used"],
-    ["2", "Note if it was full, if the pay machine worked, and if the bathrooms were open"],
-  ];
-  const items = steps.map(([num, title]) => `
-    <li>
-      <span class="how-num">${num}</span>
-      <span class="how-title">${title}</span>
-    </li>
-  `).join("");
-  return `<ol class="how-row" aria-label="How">${items}</ol>`;
 }
 
 export function render() {
@@ -59,11 +60,15 @@ export function render() {
     `;
   }
   return `
-    <h1>For the trail.</h1>
+    <div class="hero-section">
+      <h1 class="hero-title">Just visit a trailhead?</h1>
+      <p class="hero-desc">Share real-time updates with the community about the parking lot, pay machines, and bathrooms.</p>
+    </div>
     ${scenarios()}
-    <p class="lead-note">It changes through the day, so the next person can know before they drive out.</p>
-    ${howSteps()}
-    <p class="quiet">No name, no email, no phone number.</p>
-    ${actions("Add a visit")}
+    <div class="spacer"></div>
+    <div class="trust-tag">
+      <span class="trust-text">No account, no tracking, or registration required.</span>
+    </div>
+    ${actions("Check in trailhead status")}
   `;
 }

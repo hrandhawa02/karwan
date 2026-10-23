@@ -18,15 +18,16 @@
 
 .at-start h1 {
   margin-bottom: 1.05rem;
-  font-size: 2.45rem;
-  line-height: 1.05;
+  font-size: 2.1rem; 
+  line-height: 1.15;
+  letter-spacing: -0.02em;
 }
 
 .at-start .scenarios {
   display: flex;
   flex-direction: column;
-  gap: 0.7rem;
-  margin: 0.2rem 0 0;
+  gap: 1.5rem;
+  margin: 1.5rem 0 0;
   padding: 0;
   list-style: none;
 }
@@ -34,28 +35,48 @@
 .at-start .scenarios li {
   display: flex;
   align-items: center;
-  gap: 0.7rem;
+  justify-content: flex-end;
+  gap: 1.1rem;
   margin: 0;
-  padding: 0.5rem 0.45rem 0.5rem 0.85rem;
-  border-radius: 16px;
-  background: #f4efe8;
-  box-shadow: 0 1px 0 rgba(23, 33, 28, 0.04);
-  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
-  font-size: 1.12rem;
-  font-weight: 560;
-  letter-spacing: -0.03em;
-  line-height: 1.22;
+  background: none;
+  box-shadow: none;
 }
 
-.at-start .scenarios li span {
+/* Handles layout text stacking spacing */
+.at-start .scenarios .metric-text {
   flex: 1 1 auto;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
 }
 
+/* Bold accessible metric headers */
+.at-start .scenarios .metric-text strong {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1C2421;
+}
+
+/* Soft, clean subtext explanation descriptions */
+.at-start .scenarios .metric-text em {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-style: normal;
+  font-size: 0.95rem;
+  line-height: 1.4;
+  color: #43524B;
+}
+
+/* Circle image frame crop hook targets */
 .at-start .scenarios picture {
   flex: 0 0 auto;
-  width: 4.35rem;
-  height: 3.35rem;
+  width: 3.5rem;
+  height: 3.5rem;
+  border-radius: 50%; 
+  overflow: hidden;
+  border: 1px solid #E2E6E3;
 }
 
 .at-start .scenarios img {
@@ -63,42 +84,7 @@
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 12px;
-}
-
-.at-start .why,
-.at-start .point {
-  margin: 1rem 0 0;
-  color: var(--ink);
-  font-size: 1.02rem;
-  line-height: 1.45;
-  font-weight: 450;
-}
-
-.at-start .scenarios + .why {
-  margin-top: 1.15rem;
-}
-
-.at-start .why + .lead-note {
-  margin-top: 0.85rem;
-}
-
-.at-start .lead-note {
-  margin: 1.35rem 0 0;
-  padding: 1rem 1.05rem;
-  border-radius: 16px;
-  background: #17211c;
-  color: #f6f3ee;
-  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
-  font-size: 1.22rem;
-  font-weight: 560;
-  letter-spacing: -0.03em;
-  line-height: 1.3;
-}
-
-.at-start .point + .how-row,
-.at-start .how-row + .point {
-  margin-top: 1rem;
+  border-radius: 0;
 }
 
 .at-start .quiet {
@@ -648,39 +634,6 @@ body.home {
   list-style: none;
 }
 
-.at-start .how-row li {
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  gap: 0.75rem;
-  margin: 0;
-  padding: 0.72rem 0.85rem;
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  background: #f6f1ea;
-  text-align: left;
-}
-
-.at-start .how-num {
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-  width: 1.75rem;
-  height: 1.75rem;
-  border-radius: 50%;
-  background: #fff;
-  color: #a34e22;
-  font-size: 0.88rem;
-  font-weight: 700;
-}
-
-.at-start .how-title {
-  color: var(--ink);
-  font-size: 1.02rem;
-  font-weight: 650;
-  line-height: 1.3;
-}
-
 .at-start .actions {
   margin-top: 0.85rem;
   position: static;
@@ -713,3 +666,118 @@ body.home {
 .legal a {
   color: var(--muted);
 }
+
+/* Container cleaning up layout lists */
+.scenarios-container {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+/* Container spacing for the text header block */
+.hero-section {
+  margin-bottom: 24px;
+  text-align: left; /* Anchors left for a solid reading margin on mobile */
+}
+
+/* Big, bold headline styling */
+.hero-title {
+  font-size: 2.12rem;     
+  font-weight: 800;       
+  line-height: 1.15;
+  color: #1C2421;         
+  letter-spacing: -0.8px; 
+  margin-bottom: 12px;
+}
+
+/* Crisp, readable subtitle description */
+.hero-desc {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+  color: #3B4742;
+  max-width: 95%; 
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  hyphens: none;
+  text-wrap: pretty; 
+}
+
+
+.trust-tag {
+  /* This margin rule pushes everything below it cleanly to the bottom */
+  margin: auto 0 0; 
+  
+  background-color: #EBF5F0; 
+  border: 1px solid #C4E3D4; 
+  border-radius: 12px;
+  padding: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+
+.trust-text {
+  font-size: 14px;
+  font-weight: 600;
+  color: #1B4D36; 
+}
+
+.metrics-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 20px; /* Gives more generous breathing room for older eyes to read */
+  margin-bottom: 32px;
+}
+
+.metric-bullet {
+  display: flex;
+  align-items: center; /* Vertically centers image with text for a clean row alignment */
+  gap: 16px;
+  padding-bottom: 4px;
+}
+
+.metric-visual {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%; /* Changes from a square button shape to a friendly round icon circle */
+  overflow: hidden;
+  flex-shrink: 0;
+  border: 1px solid #E2E6E3;
+}
+
+.metric-visual img,
+.metric-visual picture {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.metric-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  text-align: left;
+}
+
+.metric-label {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #1C2421;
+}
+
+.metric-details {
+  font-size: 0.88rem;
+  line-height: 1.4;
+  color: #5C6E65; /* Slightly softer text color to establish clear reading hierarchy */
+}
+
+
