@@ -1,0 +1,10 @@
+/* Survey flow (index.html): one bundle, imports live next to each component. */
+@import "brand/brand.css";
+@import "app/page.css";
+@import "app/header.css";
+@import "app/type.css";
+@import "app/screens/survey-intro.css";
+@import "app/questions.css";
+@import "app/screens/thanks.css";
+@import "map/map.css";
+@import "map/name.css";

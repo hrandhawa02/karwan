@@ -1,0 +1,8 @@
+/* Marketing and legal pages: shared shell + page-specific styles. */
+@import "../brand/brand.css";
+@import "../app/page.css";
+@import "../app/header.css";
+@import "../app/type.css";
+@import "home.css";
+@import "legal.css";
+@import "announce.css";

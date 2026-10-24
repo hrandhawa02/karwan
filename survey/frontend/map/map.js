@@ -1,6 +1,12 @@
-import { esc } from "../buttons.js";
-import { matchingCountries } from "../countries.js";
-import { applyKnown, currentVisit } from "../current_visit.js";
+import { esc } from "../app/buttons.js";
+import { matchingCountries } from "../app/countries.js";
+import { applyKnown, currentVisit } from "../app/current_visit.js";
+import {
+  settleMapChrome,
+  syncMapViewport,
+  unwatchMapViewport,
+  watchMapViewport,
+} from "./viewport.js";
 
 const DEFAULT_VIEW = { lat: 47.4881, lon: -121.7237, zoom: 13 };
 const SEARCH_MIN_ZOOM = 14;
@@ -71,7 +77,6 @@ let namedRouteKey = "";
 let moveTimer = null;
 let mapResizeHandler = null;
 let mapFrameObserver = null;
-let viewportHandler = null;
 let suggestTimer = null;
 let suggestToken = 0;
 let suggestQuery = "";
@@ -104,40 +109,9 @@ function pinKey(pin) {
   return `${pin.osm_type}:${pin.osm_id}`;
 }
 
-function syncViewport() {
-  const view = window.visualViewport;
-  const root = document.documentElement;
-  const height = Math.round(view ? view.height : window.innerHeight);
-  const top = Math.round(view ? view.offsetTop : 0);
-  const changed = root.style.getPropertyValue("--view-height") !== `${height}px`;
-  root.style.setProperty("--view-height", `${height}px`);
-  root.style.setProperty("--view-top", `${top}px`);
-  return changed;
-}
-
-function watchViewport() {
-  syncViewport();
-  viewportHandler = () => {
-    if (syncViewport()) map?.invalidateSize();
-  };
-  window.visualViewport?.addEventListener("resize", viewportHandler);
-  window.visualViewport?.addEventListener("scroll", viewportHandler);
-}
-
-function unwatchViewport() {
-  if (viewportHandler) {
-    window.visualViewport?.removeEventListener("resize", viewportHandler);
-    window.visualViewport?.removeEventListener("scroll", viewportHandler);
-    viewportHandler = null;
-  }
-  document.documentElement.style.removeProperty("--view-height");
-  document.documentElement.style.removeProperty("--view-top");
-  document.body.classList.remove("map-typing");
-}
-
 function closeKeyboard() {
   document.getElementById("search-input")?.blur();
-  document.body.classList.remove("map-typing");
+  settleMapChrome();
 }
 
 function mergePins(incoming) {
@@ -2173,7 +2147,7 @@ export function destroyMap() {
     mapFrameObserver.disconnect();
     mapFrameObserver = null;
   }
-  unwatchViewport();
+  unwatchMapViewport();
   if (map) {
     map.remove();
     map = null;
@@ -2195,7 +2169,7 @@ export function destroyMap() {
 
 export function mountMap(_root, go) {
   destroyMap();
-  watchViewport();
+  watchMapViewport(() => map?.invalidateSize());
 
   map = window.L.map("visit-map", {
     zoomControl: false,
@@ -2275,13 +2249,11 @@ export function mountMap(_root, go) {
   document.getElementById("suggest-shade")?.addEventListener("click", () => hideSuggest());
 
   document.getElementById("search-input").addEventListener("blur", () => {
-    document.body.classList.remove("map-typing");
-    window.scrollTo(0, 0);
-    syncViewport();
+    settleMapChrome();
   });
   document.getElementById("search-input").addEventListener("focus", () => {
     document.body.classList.add("map-typing");
-    window.scrollTo(0, 0);
+    syncMapViewport(() => map?.invalidateSize());
     if (namingChoice) return;
     const input = document.getElementById("search-input");
     const text = input.value.trim();

@@ -172,17 +172,32 @@ def survey_og_image_jpg():
 
 @app.get("/survey/style.css")
 def survey_style_legacy():
-    return FileResponse(FRONTEND / "css" / "style.css", media_type="text/css")
+    return FileResponse(FRONTEND / "survey.css", media_type="text/css")
+
+
+@app.get("/survey/css/style.css")
+def survey_css_style_legacy():
+    return FileResponse(FRONTEND / "survey.css", media_type="text/css")
 
 
 @app.get("/survey/main.js")
 def survey_main_legacy():
-    return FileResponse(FRONTEND / "js" / "main.js", media_type="text/javascript")
+    return FileResponse(FRONTEND / "app" / "main.js", media_type="text/javascript")
 
 
 @app.get("/survey/home.js")
 def survey_home_legacy():
-    return FileResponse(FRONTEND / "js" / "home.js", media_type="text/javascript")
+    return FileResponse(FRONTEND / "app" / "home.js", media_type="text/javascript")
+
+
+@app.get("/survey/js/main.js")
+def survey_main_js_legacy():
+    return FileResponse(FRONTEND / "app" / "main.js", media_type="text/javascript")
+
+
+@app.get("/survey/js/home.js")
+def survey_home_js_legacy():
+    return FileResponse(FRONTEND / "app" / "home.js", media_type="text/javascript")
 
 
 PAGES = FRONTEND / "pages"

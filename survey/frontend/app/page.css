@@ -22,6 +22,10 @@ html {
   text-size-adjust: 100%;
 }
 
+html.on-map-step {
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   min-height: 100dvh;
@@ -69,12 +73,15 @@ select {
 .on-map-step main {
   position: fixed;
   top: var(--view-top, 0px);
-  left: 0;
-  right: 0;
+  left: calc(
+    var(--view-left, 0px)
+    + max(0px, (var(--view-width, 100vw) - min(32rem, var(--view-width, 100vw))) / 2)
+  );
+  width: min(32rem, var(--view-width, 100vw));
   max-width: 32rem;
   height: var(--view-height, 100dvh);
   min-height: 0;
-  margin: 0 auto;
+  margin: 0;
   overflow: hidden;
   padding:
     calc(env(safe-area-inset-top, 0px) + 0.65rem)

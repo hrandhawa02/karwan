@@ -1,5 +1,10 @@
 import { FORM_URL } from "./api.js";
-import { destroyMap, mountMap } from "./screens/map.js";
+import { destroyMap, mountMap } from "../map/map.js";
+import {
+  clearViewportVars,
+  installGlobalLayoutRecovery,
+  resetDocumentScroll,
+} from "../map/viewport.js";
 import { arrivalInRange, formatWall, nowInZone, shortZoneCode } from "./clock.js";
 import { nextStep, previousStep, progressLabel } from "./steps.js";
 import { postVisit, saveProblem, visitPayload } from "./submit.js";
@@ -25,9 +30,14 @@ function draw(moveFocus) {
   const atStart = currentVisit.stepId === "start";
   const onGuide = currentVisit.stepId === "guide";
   const onMap = currentVisit.stepId === "map";
+  document.documentElement.classList.toggle("on-map-step", onMap);
   document.body.classList.toggle("at-intro", atStart);
   document.body.classList.toggle("on-guide", onGuide);
   document.body.classList.toggle("on-map-step", onMap);
+  if (!onMap) {
+    clearViewportVars();
+    resetDocumentScroll();
+  }
   if (!onMap) document.body.classList.remove("map-naming");
   trailheadLine.textContent = currentVisit.trailhead && !atStart && !onMap
     ? currentVisit.trailhead.name
@@ -376,6 +386,7 @@ screen.addEventListener("scroll", (event) => {
   if (!wheel || syncingWheels) return;
   commitWheel(wheel);
 }, true);
+installGlobalLayoutRecovery();
 draw(true);
 
 fetch(FORM_URL)

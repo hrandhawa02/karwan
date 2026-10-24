@@ -12,7 +12,7 @@ People open one worldwide link on their phone. The map shows trailheads and park
 
 `survey/` is this trailhead survey. The page and the server live here together, in one repository.
 
-`survey/frontend/` is the page someone sees. `index.html` is the page shell, `style.css` loads the look from `survey/frontend/css/`, and `main.js` moves between questions. Each question is a file in `survey/frontend/screens/`. Privacy is `/privacy`. Terms are `/terms`.
+`survey/frontend/` is the page someone sees. `index.html` is the survey shell; `survey.css` pulls in styles from `app/`, `map/`, and `brand/`. `app/main.js` moves between questions; each step is under `app/screens/`. The map step is `map/map.js`. Home, privacy, and terms use `pages/` with `pages/site.css`. Privacy is `/privacy`. Terms are `/terms`.
 
 `survey/backend/` stores the visit. `server.py` is the website. `database.py` opens the database. `trailhead.py` is the sample trailhead. `allowed_answers.py` is which choices count. `save_visit.py` writes the visit.
 
