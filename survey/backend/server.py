@@ -24,6 +24,7 @@ from survey.backend.save_visit import VisitIn, save_visit
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "survey" / "frontend"
+BRAND = FRONTEND / "brand"
 mimetypes.add_type("image/avif", ".avif")
 mimetypes.add_type("image/webp", ".webp")
 API_V1 = "/api/v1"
@@ -85,6 +86,9 @@ ICON_PATHS = {
     "/survey/favicon.ico",
     "/survey/favicon.svg",
     "/survey/apple-touch-icon.png",
+    "/survey/brand/favicon.ico",
+    "/survey/brand/favicon.svg",
+    "/survey/brand/apple-touch-icon.png",
 }
 
 
@@ -128,27 +132,70 @@ async def quiet_invalid_visit(request: Request, _exc: RequestValidationError):
 
 @app.get("/favicon.ico")
 def favicon_ico():
-    return FileResponse(FRONTEND / "favicon.ico")
+    return FileResponse(BRAND / "favicon.ico")
 
 
 @app.get("/favicon.svg")
 def favicon_svg():
-    return FileResponse(FRONTEND / "favicon.svg", media_type="image/svg+xml")
+    return FileResponse(BRAND / "favicon.svg", media_type="image/svg+xml")
 
 
 @app.get("/apple-touch-icon.png")
 def apple_icon():
-    return FileResponse(FRONTEND / "apple-touch-icon.png")
+    return FileResponse(BRAND / "apple-touch-icon.png")
+
+
+@app.get("/survey/favicon.ico")
+def survey_favicon_ico():
+    return FileResponse(BRAND / "favicon.ico")
+
+
+@app.get("/survey/favicon.svg")
+def survey_favicon_svg():
+    return FileResponse(BRAND / "favicon.svg", media_type="image/svg+xml")
+
+
+@app.get("/survey/apple-touch-icon.png")
+def survey_apple_icon():
+    return FileResponse(BRAND / "apple-touch-icon.png")
+
+
+@app.get("/survey/og-image.png")
+def survey_og_image_png():
+    return FileResponse(BRAND / "og-image.png")
+
+
+@app.get("/survey/og-image.jpg")
+def survey_og_image_jpg():
+    return FileResponse(BRAND / "og-image.jpg")
+
+
+@app.get("/survey/style.css")
+def survey_style_legacy():
+    return FileResponse(FRONTEND / "css" / "style.css", media_type="text/css")
+
+
+@app.get("/survey/main.js")
+def survey_main_legacy():
+    return FileResponse(FRONTEND / "js" / "main.js", media_type="text/javascript")
+
+
+@app.get("/survey/home.js")
+def survey_home_legacy():
+    return FileResponse(FRONTEND / "js" / "home.js", media_type="text/javascript")
+
+
+PAGES = FRONTEND / "pages"
 
 
 @app.get("/")
 def home():
-    return FileResponse(FRONTEND / "home.html")
+    return FileResponse(PAGES / "home.html")
 
 
 @app.get("/announcements")
 def announcements():
-    return FileResponse(FRONTEND / "announcements.html")
+    return FileResponse(PAGES / "announcements.html")
 
 
 @app.get("/survey")
@@ -162,12 +209,12 @@ app.mount("/survey", StaticFiles(directory=FRONTEND), name="frontend")
 
 @app.get("/privacy")
 def privacy():
-    return FileResponse(FRONTEND / "privacy.html")
+    return FileResponse(PAGES / "privacy.html")
 
 
 @app.get("/terms")
 def terms():
-    return FileResponse(FRONTEND / "terms.html")
+    return FileResponse(PAGES / "terms.html")
 
 
 @app.get(f"{API_V1}/form")

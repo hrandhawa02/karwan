@@ -1,8 +1,8 @@
-export { render as start } from "./start.js";
+export { render as start } from "./survey-intro.js";
 export { render as guide } from "./guide.js";
 export { render as map } from "./map.js";
 export { render as trailhead } from "./trailhead.js";
-export { render as hikeStart } from "./hike-start.js";
+export { render as hikeStart } from "./arrival-time.js";
 export { render as stay } from "./stay.js";
 export { render as carsWhere } from "./cars-where.js";
 export { render as accessible } from "./accessible.js";

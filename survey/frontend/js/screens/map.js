@@ -8,7 +8,7 @@ const SEARCH_WIDE_SPAN_LAT = 0.35;
 const SEARCH_WIDE_SPAN_LON = 0.45;
 const TILE_URL = "https://{s}.tile.openstreetmap.fr/hot/{z}/{x}/{y}.png";
 const COORD_RE = /^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/;
-const NO_P_NOTE = "I didn't find a lot in this area. Drop a pin to mark where you parked.";
+const NO_P_NOTE = "No lot here. Zoom out with − and look around for a blue P, or Drop a pin.";
 const ZOOM_IN_NOTE = "Zoom in to load parking and trails here.";
 const SUGGEST_EMPTY = "Nothing matched. Try a trail name, a country, or coordinates like 47.49, -121.72.";
 const filters = {
@@ -71,6 +71,7 @@ let namedRouteKey = "";
 let moveTimer = null;
 let mapResizeHandler = null;
 let mapFrameObserver = null;
+let viewportHandler = null;
 let suggestTimer = null;
 let suggestToken = 0;
 let suggestQuery = "";
@@ -101,6 +102,42 @@ let anchorTrailLabel = "";
 
 function pinKey(pin) {
   return `${pin.osm_type}:${pin.osm_id}`;
+}
+
+function syncViewport() {
+  const view = window.visualViewport;
+  const root = document.documentElement;
+  const height = Math.round(view ? view.height : window.innerHeight);
+  const top = Math.round(view ? view.offsetTop : 0);
+  const changed = root.style.getPropertyValue("--view-height") !== `${height}px`;
+  root.style.setProperty("--view-height", `${height}px`);
+  root.style.setProperty("--view-top", `${top}px`);
+  return changed;
+}
+
+function watchViewport() {
+  syncViewport();
+  viewportHandler = () => {
+    if (syncViewport()) map?.invalidateSize();
+  };
+  window.visualViewport?.addEventListener("resize", viewportHandler);
+  window.visualViewport?.addEventListener("scroll", viewportHandler);
+}
+
+function unwatchViewport() {
+  if (viewportHandler) {
+    window.visualViewport?.removeEventListener("resize", viewportHandler);
+    window.visualViewport?.removeEventListener("scroll", viewportHandler);
+    viewportHandler = null;
+  }
+  document.documentElement.style.removeProperty("--view-height");
+  document.documentElement.style.removeProperty("--view-top");
+  document.body.classList.remove("map-typing");
+}
+
+function closeKeyboard() {
+  document.getElementById("search-input")?.blur();
+  document.body.classList.remove("map-typing");
 }
 
 function mergePins(incoming) {
@@ -391,7 +428,7 @@ function parkingNearPoint(list, lat, lon, maxM = 650) {
 }
 
 function showAreaGuide(list, lat, lon) {
-  if (userMarkedSpot()) return;
+  if (userMarkedSpot() || chosen?.mode === "route") return;
   const lots = map
     ? (parkingInView(list) || (lat != null && lon != null && parkingNearPoint(list, lat, lon)))
     : parkingIn(list);
@@ -498,8 +535,52 @@ function useChoiceName(choice) {
   namingChoice = false;
 }
 
+function choiceActivity(choice) {
+  if (choice.kind === "peak") return "peak";
+  if (choice.kind === "climb") return "climb";
+  if (choice.kind !== "place") return "";
+  const type = String(choice.placeType || "").toLowerCase();
+  if (type === "parking" || type === "hike") return "";
+  return type in filters ? type : "";
+}
+
+function soughtPin(choice, kind) {
+  let best = null;
+  let bestMeters = 200;
+  for (const pin of knownPins.values()) {
+    if (pin.kind !== kind) continue;
+    const meters = map.distance([choice.lat, choice.lon], [pin.lat, pin.lon]);
+    if (meters < bestMeters) {
+      bestMeters = meters;
+      best = pin;
+    }
+  }
+  return best || {
+    osm_type: "search",
+    osm_id: `${choice.lat},${choice.lon}`,
+    kind,
+    lat: choice.lat,
+    lon: choice.lon,
+    name: choice.label,
+    named: true,
+  };
+}
+
+function markSoughtPlace(choice, kind) {
+  if (!map || !kind || userMarkedSpot()) return;
+  filters[kind] = true;
+  const pin = soughtPin(choice, kind);
+  knownPins.set(pinKey(pin), pin);
+  namedRouteKey = pinKey(pin);
+  chosen = { mode: "route", pin, trailName: pin.name || choice.label };
+  clearToast("guide");
+  sheet(chosen);
+  drawPins(mergePins([]));
+}
+
 async function applySearchChoice(choice) {
   if (!map || !choice) return;
+  closeKeyboard();
   clearSearchChoices();
   clearWait();
   useChoiceName(choice);
@@ -513,7 +594,8 @@ async function applySearchChoice(choice) {
     selectPin(choice.pin);
     return;
   }
-  if (choice.kind === "trail") {
+  const activity = choiceActivity(choice);
+  if (choice.kind === "trail" || activity) {
     anchorTrailLabel = choice.label;
   } else {
     anchorTrailLabel = "";
@@ -536,16 +618,19 @@ async function applySearchChoice(choice) {
       drawPins(mergePins([]));
       await loadPins(true);
       clearWait();
+      markSoughtPlace(choice, activity);
       showAreaGuide(loaded.length ? loaded : near, choice.lat, choice.lon);
     } else {
       frameSearchArea(choice, []);
       await loadPins(true);
+      markSoughtPlace(choice, activity);
       showAreaGuide(loaded, choice.lat, choice.lon);
     }
   } catch (_err) {
     clearWait();
     frameSearchArea(choice, []);
     await loadPins(true);
+    markSoughtPlace(choice, activity);
     showAreaGuide(loaded, choice.lat, choice.lon);
   }
 }
@@ -713,26 +798,33 @@ function setSheetSub(sub, note, asHtml) {
   else sub.textContent = note;
 }
 
+function routeNote(pin) {
+  if (pin?.lat != null && parkingNearPoint([...knownPins.values()], pin.lat, pin.lon)) {
+    return "Tap the blue P where you left your car.";
+  }
+  return "No lot here. Zoom out with − and look around for a blue P, or Drop a pin.";
+}
+
 function sheet(state) {
   const title = document.getElementById("sheet-name");
   const sub = document.getElementById("sheet-sub");
   if (!title || !sub) return;
   fadeCard();
-  let heading = "Tap or drop a pin where you parked.";
-  let note = "";
+  let heading = "Where did you park?";
+  let note = "Tap the blue P where you left your car.";
   let noteHtml = false;
   let enabled = false;
   if (state?.mode === "pick-lot") {
     heading = state.pin.name || "Trailhead";
-    note = "Tap the lot you used.";
+    note = "Where did you park? Tap the blue P where you left your car.";
     noteHtml = false;
   } else if (state?.mode === "trailhead") {
     heading = state.pin.name || "Trailhead";
-    note = "That’s the trailhead. Tap your lot, or use Drop a pin.";
+    note = "That’s where the trail starts. Now tap the blue P where you left your car.";
     noteHtml = false;
   } else if (state?.mode === "route") {
-    heading = state.pin?.name || "Trail";
-    note = "Find the lot you used, or drop a pin.";
+    heading = "Where did you park?";
+    note = routeNote(state.pin);
     noteHtml = false;
   } else if (state?.mode === "pin") {
     heading = state.pin.name;
@@ -750,8 +842,8 @@ function sheet(state) {
     noteHtml = false;
     enabled = true;
   } else if (droppingMode) {
-    heading = "Drop a pin on the lot";
-    note = "Tap where you parked. You can zoom in to fix the point.";
+    heading = "Now tap the map where you left your car";
+    note = "Use + to zoom in so the pin lands in the right spot.";
     noteHtml = false;
   }
   const card = document.getElementById("map-sheet");
@@ -1451,7 +1543,7 @@ async function loadPins(keepNote = false) {
     }
     const merged = mergePins(payload.places);
     drawPins(merged);
-    const noLot = !userMarkedSpot() && !parkingInView(merged);
+    const noLot = !userMarkedSpot() && chosen?.mode !== "route" && !parkingInView(merged);
     if (noLot) {
       if (suppressNoPNote) {
         suppressNoPNote = false;
@@ -1561,6 +1653,7 @@ function coordinatePair(text) {
 }
 
 async function jumpToCoordinates(lat, lon) {
+  closeKeyboard();
   loadToken++;
   soughtLabel = "";
   anchorTrailLabel = "";
@@ -1575,6 +1668,7 @@ async function search() {
   const text = input.value.trim();
   if (text.length < 2 || !map) return;
 
+  closeKeyboard();
   hideSuggest();
   clearSearchChoices();
 
@@ -1769,6 +1863,8 @@ function choiceMark(choice) {
   if (choice.kind === "climb") return placeMark("climb");
   if (choice.kind === "peak") return placeMark("peak");
   if (String(choice.placeType || "").toLowerCase() === "range") return targetMark();
+  const activity = choiceActivity(choice);
+  if (activity) return activityMark(activity);
   return placeMark(choice.placeType);
 }
 
@@ -1848,6 +1944,7 @@ function countryRows(query) {
 
 function jumpToCountry(country) {
   if (!country || !map) return;
+  closeKeyboard();
   hideSuggest();
   viewLabel = country.name;
   loadToken++;
@@ -2016,8 +2113,8 @@ export function render() {
       <span class="map-filters-more" aria-hidden="true">›</span>
     </div>
     <div id="map-sheet" class="map-sheet">
-      <h1 id="sheet-name" class="sheet-title">Tap or drop a pin where you parked.</h1>
-      <p id="sheet-sub" class="sheet-helper" hidden></p>
+      <h1 id="sheet-name" class="sheet-title">Where did you park?</h1>
+      <p id="sheet-sub" class="sheet-helper">Tap the blue P where you left your car.</p>
       <div class="actions">
         <button type="button" class="back" id="back">Back</button>
         <button type="button" class="next" id="map-next" disabled>Continue</button>
@@ -2076,6 +2173,7 @@ export function destroyMap() {
     mapFrameObserver.disconnect();
     mapFrameObserver = null;
   }
+  unwatchViewport();
   if (map) {
     map.remove();
     map = null;
@@ -2097,6 +2195,7 @@ export function destroyMap() {
 
 export function mountMap(_root, go) {
   destroyMap();
+  watchViewport();
 
   map = window.L.map("visit-map", {
     zoomControl: false,
@@ -2175,7 +2274,13 @@ export function mountMap(_root, go) {
 
   document.getElementById("suggest-shade")?.addEventListener("click", () => hideSuggest());
 
+  document.getElementById("search-input").addEventListener("blur", () => {
+    document.body.classList.remove("map-typing");
+    window.scrollTo(0, 0);
+    syncViewport();
+  });
   document.getElementById("search-input").addEventListener("focus", () => {
+    document.body.classList.add("map-typing");
     window.scrollTo(0, 0);
     if (namingChoice) return;
     const input = document.getElementById("search-input");

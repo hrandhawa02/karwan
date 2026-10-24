@@ -51,13 +51,13 @@ a.brand:active,
   padding: 0.45rem 0.15rem;
 }
 
-.at-start:has(#screen .legal) main > .legal,
+.at-intro:has(#screen .legal) main > .legal,
 .on-guide main > .legal,
 .on-map-step main > .legal {
   display: none;
 }
 
-.at-start main > .legal {
+.at-intro main > .legal {
   flex-shrink: 0;
   margin-top: 0.7rem;
 }

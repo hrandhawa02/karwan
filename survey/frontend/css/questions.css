@@ -301,6 +301,31 @@
   background: none;
 }
 
+body:not(.on-map-step) #screen .actions:not(.stack) {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  width: auto;
+  margin-top: auto;
+  margin-inline: calc(-1 * max(1.25rem, env(safe-area-inset-left)));
+  padding:
+    0.75rem
+    max(1.25rem, env(safe-area-inset-right))
+    max(0.75rem, env(safe-area-inset-bottom))
+    max(1.25rem, env(safe-area-inset-left));
+  border-top: 1px solid var(--line);
+  background: var(--bg);
+}
+
+body.at-intro #screen .actions:not(.stack) {
+  margin-top: 0.85rem;
+  margin-inline: -1.25rem;
+  margin-bottom: -1.35rem;
+  padding-inline: 1.25rem;
+  border-radius: 0 0 20px 20px;
+  background: var(--card);
+}
+
 .actions .error,
 .actions .send-note {
   flex: 1 0 100%;

@@ -61,8 +61,8 @@ export function render() {
   }
   return `
     <div class="hero-section">
-      <h1 class="hero-title">Just visit a trailhead?</h1>
-      <p class="hero-desc">Share real-time updates with the community about the parking lot, pay machines, and bathrooms.</p>
+      <h1 class="hero-title">At the trailhead?</h1>
+      <p class="hero-desc">Leave a short note for the next hiker on parking, pay machines, and bathrooms.</p>
     </div>
     ${scenarios()}
     <div class="spacer"></div>

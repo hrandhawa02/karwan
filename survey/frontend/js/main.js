@@ -25,7 +25,7 @@ function draw(moveFocus) {
   const atStart = currentVisit.stepId === "start";
   const onGuide = currentVisit.stepId === "guide";
   const onMap = currentVisit.stepId === "map";
-  document.body.classList.toggle("at-start", atStart);
+  document.body.classList.toggle("at-intro", atStart);
   document.body.classList.toggle("on-guide", onGuide);
   document.body.classList.toggle("on-map-step", onMap);
   if (!onMap) document.body.classList.remove("map-naming");
@@ -100,7 +100,7 @@ async function shareSurvey() {
     try {
       await navigator.share({
         title: "Karwan",
-        text: "Quick trailhead lot update — help the next person plan their day.",
+        text: "At the trailhead? Leave a one-minute Karwan note on parking, the pay box, and bathrooms—no account.",
         url,
       });
       return;

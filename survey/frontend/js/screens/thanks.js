@@ -5,7 +5,7 @@ export function render() {
       <h1>Thank you.</h1>
       <p class="copy thanks-lead">Your update helps the community plan their day.</p>
       <p class="copy thanks-body">Real-time conditions keep our outdoor spots open, safe, and accessible for everyone.</p>
-      <p class="copy thanks-share-prompt">Know someone heading out to the lot today?</p>
+      <p class="copy thanks-share-prompt">Know someone who was at a trailhead today?</p>
     </div>
     <div class="actions stack thanks-actions">
       <button

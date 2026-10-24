@@ -1,0 +1,9 @@
+.at-intro h1,
+.home h1,
+.announce h1,
+.brand,
+.name {
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
