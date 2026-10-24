@@ -69,12 +69,15 @@ export function unwatchMapViewport() {
 }
 
 /** After keyboard / typeahead closes; does not touch the map or API. */
-export function settleMapChrome() {
+export function settleMapChrome(onSettled) {
   document.body.classList.remove("map-typing");
   requestAnimationFrame(() => {
     applyViewportVars();
     resetDocumentScroll();
-    requestAnimationFrame(resetDocumentScroll);
+    requestAnimationFrame(() => {
+      resetDocumentScroll();
+      onSettled?.();
+    });
   });
 }
 

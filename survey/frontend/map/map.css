@@ -1323,7 +1323,8 @@ body.search-modal-open {
   }
 }
 
-@media (max-height: 820px) {
+/* Phones and narrow mobile web: compact filter pills, more map room. */
+@media (max-width: 48rem) {
   .on-map-step .map-filters-scroll {
     margin-top: 0.6rem;
   }
@@ -1378,5 +1379,9 @@ body.search-modal-open {
 
   .on-map-step .map-sheet .actions {
     margin-top: 0.6rem;
+  }
+
+  .map-toast.is-ok {
+    display: none !important;
   }
 }

@@ -111,7 +111,7 @@ function pinKey(pin) {
 
 function closeKeyboard() {
   document.getElementById("search-input")?.blur();
-  settleMapChrome();
+  settleMapChrome(() => map?.invalidateSize());
 }
 
 function mergePins(incoming) {
@@ -431,7 +431,12 @@ function placedPinNote() {
   return "Does this look right? Drag the pin if you need to move it, then tap Continue.";
 }
 
+function mobileMapUi() {
+  return window.matchMedia("(max-width: 48rem)").matches;
+}
+
 function showPlacedPinBanner() {
+  if (mobileMapUi()) return;
   showToast(placedPinNote(), "is-ok", "selection");
 }
 
@@ -458,7 +463,31 @@ function lotConfirmNote(state) {
   return `Does this look right? Tap Continue if you parked at ${name}, or choose another blue P.`;
 }
 
+function sheetLotConfirmNote(state) {
+  if (!state?.pin) {
+    return "Tap Continue if this is the right lot.";
+  }
+  const name = state.pin.name || "this lot";
+  if (state.snapped && state.mode === "unnamed") {
+    return "Tap Continue to label this unnamed lot.";
+  }
+  if (state.snapped && state.pin.name) {
+    return `We'll use ${name}. Tap Continue, or pick another blue P.`;
+  }
+  if (state.mode === "unnamed") {
+    return "Tap Continue to label this lot, or pick another blue P.";
+  }
+  if (state.askTrail) {
+    return `Tap Continue if you parked at ${name}.`;
+  }
+  return `Tap Continue to use ${name}, or pick another blue P.`;
+}
+
 function showLotConfirmBanner(state) {
+  if (mobileMapUi()) {
+    clearToast("selection");
+    return;
+  }
   showToast(lotConfirmNote(state), "is-ok", "selection");
 }
 
@@ -802,12 +831,12 @@ function sheet(state) {
     noteHtml = false;
   } else if (state?.mode === "pin") {
     heading = state.pin.name;
-    note = "";
+    note = mobileMapUi() ? sheetLotConfirmNote(state) : "";
     noteHtml = false;
     enabled = true;
   } else if (state?.mode === "unnamed") {
     heading = state.trailName ? `Lot near ${state.trailName}` : "Unnamed parking lot";
-    note = "";
+    note = mobileMapUi() ? sheetLotConfirmNote(state) : "";
     noteHtml = false;
     enabled = true;
   } else if (state?.mode === "name") {
@@ -2249,7 +2278,7 @@ export function mountMap(_root, go) {
   document.getElementById("suggest-shade")?.addEventListener("click", () => hideSuggest());
 
   document.getElementById("search-input").addEventListener("blur", () => {
-    settleMapChrome();
+    settleMapChrome(() => map?.invalidateSize());
   });
   document.getElementById("search-input").addEventListener("focus", () => {
     document.body.classList.add("map-typing");
