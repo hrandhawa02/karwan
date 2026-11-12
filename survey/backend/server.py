@@ -20,10 +20,16 @@ from survey.backend.osm import (
     store_place,
 )
 from survey.backend.trailhead import place_public, sample_row
+from survey.backend.map_tiles import (
+    BASEMAP_PMTILES_PATH,
+    manifest_basemap_url,
+    serve_basemap_pmtiles,
+)
 from survey.backend.save_visit import VisitIn, save_visit
 
 ROOT = Path(__file__).resolve().parents[2]
 FRONTEND = ROOT / "survey" / "frontend"
+MAP_WEB = ROOT / "map"
 BRAND = FRONTEND / "brand"
 mimetypes.add_type("image/avif", ".avif")
 mimetypes.add_type("image/webp", ".webp")
@@ -220,6 +226,39 @@ def survey_page():
 
 
 app.mount("/survey", StaticFiles(directory=FRONTEND), name="frontend")
+
+app.mount("/map", StaticFiles(directory=MAP_WEB, html=True), name="map_web")
+
+
+@app.api_route(BASEMAP_PMTILES_PATH, methods=["GET", "HEAD"])
+def pmtiles_basemap(request: Request):
+    return serve_basemap_pmtiles(ROOT, request)
+
+
+@app.get(f"{API_V1}/map-manifest")
+def map_manifest():
+    basemap_url = manifest_basemap_url(ROOT)
+    basemap_version = os.environ.get("KARWAN_BASEMAP_VERSION", "dev").strip()
+    try:
+        maxzoom = int(os.environ.get("KARWAN_BASEMAP_MAXZOOM", "15"))
+    except ValueError:
+        maxzoom = 15
+    places_url = os.environ.get("KARWAN_PLACES_URL", "").strip() or None
+    places_version = os.environ.get("KARWAN_PLACES_VERSION", "").strip() or None
+    return {
+        "basemap": {
+            "url": basemap_url,
+            "version": basemap_version,
+            "maxzoom": maxzoom,
+            "theme": "light",
+            "language": "en",
+        },
+        "places": (
+            {"url": places_url, "version": places_version}
+            if places_url and places_version
+            else None
+        ),
+    }
 
 
 @app.get("/privacy")

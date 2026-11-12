@@ -23,3 +23,12 @@ __pycache__/
 
 # Planet extracts and the outdoors database. Not for git or Railway.
 karwan-data/
+data/
+*.pmtiles
+
+# Local one-off scripts (not part of the app).
+scripts/
+
+# rclone / cloud tool configs (never commit credentials).
+rclone.conf
+**/.config/rclone/

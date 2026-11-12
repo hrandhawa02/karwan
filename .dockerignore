@@ -6,6 +6,10 @@ __pycache__
 .env
 .env.*
 docs
+data
+*.pmtiles
+scripts
+karwan-data
 app
 backend
 frontend

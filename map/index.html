@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <title>Karwan Map</title>
+  <link rel="icon" href="/survey/brand/favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" crossorigin="">
+  <link rel="stylesheet" href="/map/css/app.css">
+</head>
+<body class="map-app">
+  <header class="map-header">
+    <span class="brand">Karwan</span>
+    <a class="nav-link" href="/">Home</a>
+  </header>
+  <main>
+    <p id="map-status" class="map-status" role="status">Loading map…</p>
+    <div id="map" class="map-frame" aria-label="Map"></div>
+    <p id="map-attrib" class="map-attrib"></p>
+  </main>
+  <script type="module" src="/map/js/main.js"></script>
+</body>
+</html>

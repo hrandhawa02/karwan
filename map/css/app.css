@@ -1,0 +1,111 @@
+:root {
+  --bg: #f6f3ee;
+  --ink: #17211c;
+  --muted: #5e6b65;
+  --line: #e6e0d6;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body.map-app {
+  margin: 0;
+  min-height: 100dvh;
+  color: var(--ink);
+  font-family: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  font-size: 1rem;
+  line-height: 1.5;
+}
+
+html.map-viewport-lock {
+  overflow-x: hidden;
+}
+
+body.map-app.map-viewport-lock main {
+  position: fixed;
+  top: var(--view-top, 0);
+  left: calc(
+    var(--view-left, 0px)
+    + max(0px, (var(--view-width, 100vw) - min(32rem, var(--view-width, 100vw))) / 2)
+  );
+  width: min(32rem, var(--view-width, 100vw));
+  max-width: 32rem;
+  height: var(--view-height, 100dvh);
+  margin: 0;
+  overflow: hidden;
+  padding:
+    0
+    max(0.75rem, env(safe-area-inset-right))
+    max(0.5rem, env(safe-area-inset-bottom))
+    max(0.75rem, env(safe-area-inset-left));
+  display: flex;
+  flex-direction: column;
+}
+
+.map-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-shrink: 0;
+  padding:
+    max(0.5rem, env(safe-area-inset-top))
+    0
+    0.5rem;
+}
+
+.brand {
+  font-family: Fraunces, "Iowan Old Style", Palatino, Georgia, serif;
+  font-weight: 560;
+  letter-spacing: -0.03em;
+}
+
+.nav-link {
+  color: var(--ink);
+  text-decoration: none;
+  padding: 0.35rem 0.15rem;
+}
+
+main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-width: 32rem;
+  margin: 0 auto;
+  width: 100%;
+  padding: 0 max(0.75rem, env(safe-area-inset-right)) max(0.5rem, env(safe-area-inset-bottom)) max(0.75rem, env(safe-area-inset-left));
+}
+
+.map-status {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.map-status.is-error {
+  color: #a34e22;
+}
+
+.map-frame {
+  flex: 1;
+  min-height: 12rem;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+
+.map-attrib {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--muted);
+  text-align: center;
+}
+
+.maplibregl-ctrl-attrib {
+  font-size: 10px;
+}
