@@ -6,6 +6,7 @@ COPY --from=ghcr.io/astral-sh/uv:0.6.14 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock ./
 COPY survey ./survey
+COPY map ./map
 
 RUN uv sync --frozen --no-dev
 
