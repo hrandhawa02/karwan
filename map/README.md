@@ -24,3 +24,12 @@ Without env vars, the manifest points at **`/api/v1/pmtiles/basemap`** (same-ori
 ## Swap tiles later
 
 Change env on Railway (or `.env`) and restart—no frontend redeploy required unless manifest shape changes.
+
+## Search + pins + filters
+
+- Typeahead → **`GET /api/v1/map/search`**; pick → fly + sheet; Lots/Trailhead stay on; searched kind turns on.
+- Pills under search filter kinds (unselected = hidden pins, not gray pins).
+- Zoomed out → cluster bubbles (tap to zoom). Zoomed in → pins from **`GET /api/v1/map`** (`outdoors.db`).
+- Sheet = one place; Report/Add fact disabled until those APIs exist.
+
+See **`docs/decisions.md`**.

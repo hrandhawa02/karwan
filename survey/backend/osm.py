@@ -353,7 +353,8 @@ def map_view(south, west, north, east, accept_language=""):
         _snap(north, 0.02, True),
         _snap(east, 0.02, True),
     )
-    key = f"view:10:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    # Bump when map payload shape/counts change (e.g. trailhead / kept-lot counts).
+    key = f"view:12:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
     cached = _recall(key)
     if cached is not None:
         return cached
@@ -651,9 +652,29 @@ def search_map(text, lat, lon, accept_language=""):
 
 
 def places_near(lat, lon, radius_km=14, accept_language=""):
+    """Parking + trailheads + activities near a search hit (always pins, not clusters)."""
     dlat = radius_km / 111
     dlon = radius_km / (111 * max(math.cos(math.radians(lat)), 0.2))
-    return map_view(lat - dlat, lon - dlon, lat + dlat, lon + dlon, accept_language)
+    south, west = lat - dlat, lon - dlon
+    north, east = lat + dlat, lon + dlon
+    from survey.backend.outdoors import available, covers, view_places
+
+    if available() and covers(south, west, north, east):
+        try:
+            local = view_places(
+                south,
+                west,
+                north,
+                east,
+                accept_language,
+                force_pins=True,
+            )
+        except Exception:
+            log.warning("local outdoors near failed", exc_info=True)
+            local = None
+        if local is not None:
+            return local
+    return map_view(south, west, north, east, accept_language)
 
 
 def find_town(text):

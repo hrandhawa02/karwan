@@ -18,8 +18,24 @@
     <a class="nav-link" href="/">Home</a>
   </header>
   <main>
-    <p id="map-status" class="map-status" role="status">Loading map…</p>
+    <div class="search-wrap">
+      <label class="search-label" for="search-input">Search</label>
+      <input
+        id="search-input"
+        class="search-input"
+        type="search"
+        enterkeyhint="search"
+        autocomplete="off"
+        autocorrect="off"
+        spellcheck="false"
+        placeholder="Trail, lot, peak, or 47.49, -121.72"
+      >
+      <div id="search-suggest" class="search-suggest" hidden></div>
+    </div>
+    <div id="map-filters" class="map-filters" aria-label="Place kinds"></div>
+    <p id="map-status" class="map-status" role="status" hidden></p>
     <div id="map" class="map-frame" aria-label="Map"></div>
+    <aside id="place-sheet" class="place-sheet" hidden></aside>
     <p id="map-attrib" class="map-attrib"></p>
   </main>
   <script type="module" src="/map/js/main.js"></script>

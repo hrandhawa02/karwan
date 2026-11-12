@@ -299,7 +299,10 @@ def _wide_view(south, west, north, east):
 
 
 def _public_counts(raw):
-    counts = {kind: int(raw.get(kind, 0)) for kind in ("parking", *ACTIVITY_KINDS)}
+    counts = {
+        kind: int(raw.get(kind, 0))
+        for kind in ("parking", "trailhead", *ACTIVITY_KINDS)
+    }
     return {kind: count for kind, count in counts.items() if count}
 
 
@@ -384,15 +387,16 @@ def _rows_in_box(conn, south, west, north, east, kinds):
     ).fetchall()
 
 
-def view_places(south, west, north, east, accept_language=""):
+def view_places(south, west, north, east, accept_language="", force_pins=False):
     if not available():
         return None
-    if _wide_view(south, west, north, east):
+    # Search “near” must return lots/trailheads even when the box is wide.
+    if _wide_view(south, west, north, east) and not force_pins:
         with connect() as conn:
             clusters, counts = _clusters_in_box(conn, south, west, north, east)
         return {
             "searching_near": None,
-            "zoomed_out": False,
+            "zoomed_out": True,
             "places": [],
             "clusters": clusters,
             "counts": counts,
@@ -518,6 +522,20 @@ def view_places(south, west, north, east, accept_language=""):
             pin.pop("_name_tags", None)
             pin.pop("outdoor_kind", None)
             places.append(pin)
+    # Pill counts must match pins we actually return. Raw parking in the box
+    # includes grocery/school lots we filter out — that made “Lots 31” with ~5 pins.
+    kept_parking = sum(
+        1
+        for pin in places
+        if pin["kind"] == "parking"
+        and south <= pin["lat"] <= north
+        and west <= pin["lon"] <= east
+    )
+    counts = dict(counts)
+    if kept_parking:
+        counts["parking"] = kept_parking
+    else:
+        counts.pop("parking", None)
     return {
         "searching_near": None,
         "zoomed_out": False,
