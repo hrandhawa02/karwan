@@ -328,6 +328,53 @@ def _local_view(south, west, north, east, accept_language):
         return None
 
 
+def _local_explore(south, west, north, east, accept_language):
+    from survey.backend.outdoors import available, covers, explore_places
+
+    if not available() or not covers(south, west, north, east):
+        return None
+    try:
+        return explore_places(south, west, north, east, accept_language)
+    except Exception:
+        log.warning("local outdoors explore failed", exc_info=True)
+        return None
+
+
+def explore_view(south, west, north, east, accept_language=""):
+    """Region places for MapLibre client-side Supercluster (/map/)."""
+    if north <= south or east <= west:
+        return _zoomed_out_payload()
+    center_lat = (south + north) / 2
+    center_lon = (west + east) / 2
+    south = min(south, center_lat - 0.04)
+    north = max(north, center_lat + 0.04)
+    west = min(west, center_lon - 0.05)
+    east = max(east, center_lon + 0.05)
+    step = 0.2 if max(north - south, east - west) > 4.2 else 0.05
+    south, west, north, east = (
+        _snap(south, step, False),
+        _snap(west, step, False),
+        _snap(north, step, True),
+        _snap(east, step, True),
+    )
+    key = f"explore:1:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    cached = _recall(key)
+    if cached is not None:
+        return cached
+    local = _local_explore(south, west, north, east, accept_language)
+    if local is not None:
+        _remember(key, local, WEEK)
+        return local
+    return {
+        "zoomed_out": False,
+        "unavailable": True,
+        "places": [],
+        "clusters": [],
+        "counts": {},
+        "box": [south, west, north, east],
+    }
+
+
 def _zoomed_out_payload():
     return {
         "searching_near": None,
@@ -353,8 +400,8 @@ def map_view(south, west, north, east, accept_language=""):
         _snap(north, 0.02, True),
         _snap(east, 0.02, True),
     )
-    # Bump when map payload shape/counts change (e.g. trailhead / kept-lot counts).
-    key = f"view:12:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
+    # Bump when map payload shape/counts change (e.g. tight cluster drill boxes).
+    key = f"view:16:{_language_key(accept_language)}:{south:.4f}:{west:.4f}:{north:.4f}:{east:.4f}"
     cached = _recall(key)
     if cached is not None:
         return cached

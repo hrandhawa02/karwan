@@ -291,6 +291,7 @@ def place_by_osm(osm_type, osm_id):
 
 WIDE_LAT = 0.22
 WIDE_LON = 0.32
+EXPLORE_MAX_SPAN = 4.2
 COUNT_KINDS = ("parking", "trailhead", *ACTIVITY_KINDS)
 
 
@@ -324,52 +325,193 @@ def _counts_in_box(conn, south, west, north, east):
 
 
 def _cluster_step(south, west, north, east):
+    """Coarser steps when zoomed out → fewer, more summarized bubbles.
+
+    Wide mode starts around span > 0.22; keep cells large enough that
+    neighbors do not visually stack (old 0.06 step caused 105-on-16).
+    """
     span = max(north - south, east - west)
     if span > 8:
-        return 1.0
-    if span > 3:
-        return 0.4
+        return 1.6
+    if span > 4:
+        return 0.9
+    if span > 2:
+        return 0.5
     if span > 1:
-        return 0.15
-    return 0.06
+        return 0.32
+    if span > 0.5:
+        return 0.24
+    return 0.2
+
+
+# Parking in clusters must resemble pin-eligible lots — not every OSM stall.
+# Avoid bare "park" (matches the word "parking" itself).
+_CLUSTER_PARKING_NAME_SQL = """
+(
+  lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%trail%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%hike%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%camp%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%peak%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%mount %'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%mt %'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%falls%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%lake%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%forest%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%wilderness%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%overlook%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%viewpoint%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%recreation%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%sno-park%'
+  OR lower(coalesce(p.search_text, '') || ' ' || coalesce(p.name, '')) LIKE '%trailhead%'
+)
+"""
+
+
+def _clamp_cluster_bbox(lat, lon, south, west, north, east, half):
+    """Keep drill-down boxes near the bubble so outliers don’t empty the frame."""
+    half = max(float(half), 0.04)
+    return (
+        max(south, lat - half),
+        max(west, lon - half),
+        min(north, lat + half),
+        min(east, lon + half),
+    )
+
+
+def _merge_nearby_clusters(clusters, min_sep):
+    """Greedy merge: larger bubble absorbs neighbors within min_sep degrees."""
+    if not clusters or min_sep <= 0:
+        return clusters
+    ordered = sorted(clusters, key=lambda item: item["count"], reverse=True)
+    kept = []
+    for cell in ordered:
+        absorbed = False
+        for other in kept:
+            if (
+                abs(cell["lat"] - other["lat"]) < min_sep
+                and abs(cell["lon"] - other["lon"]) < min_sep
+            ):
+                other["count"] += cell["count"]
+                # Keep drill bbox tight around the surviving centroid so one
+                # far point does not open a huge empty fitBounds.
+                other["south"] = min(other["south"], cell["south"])
+                other["west"] = min(other["west"], cell["west"])
+                other["north"] = max(other["north"], cell["north"])
+                other["east"] = max(other["east"], cell["east"])
+                other["south"], other["west"], other["north"], other["east"] = (
+                    _clamp_cluster_bbox(
+                        other["lat"],
+                        other["lon"],
+                        other["south"],
+                        other["west"],
+                        other["north"],
+                        other["east"],
+                        min_sep * 1.4,
+                    )
+                )
+                absorbed = True
+                break
+        if not absorbed:
+            kept.append({
+                "lat": cell["lat"],
+                "lon": cell["lon"],
+                "count": int(cell["count"]),
+                "south": cell["south"],
+                "west": cell["west"],
+                "north": cell["north"],
+                "east": cell["east"],
+            })
+    kept.sort(key=lambda item: item["count"], reverse=True)
+    return kept
 
 
 def _clusters_in_box(conn, south, west, north, east):
+    """Cluster pin-relevant places only (trailheads, activities, trail-named lots).
+
+    Counting every OSM parking stall made bubbles like 735 that collapsed to a
+    couple of trail lots when zoomed in — drill-down felt broken.
+
+    BBox is the real min/max of points in the cell (not reconstructed from a
+    broken CAST grid on negative longitudes), so click → fitBounds still covers
+    the same places the number promised.
+    """
     step = _cluster_step(south, west, north, east)
     marks = ",".join("?" for _ in COUNT_KINDS)
+    # floor(x/step + eps) so negative lons bin correctly (CAST truncates toward 0).
     rows = conn.execute(
         f"""
-        SELECT p.kind, COUNT(*) AS n, AVG(p.lat) AS lat, AVG(p.lon) AS lon,
-               CAST(p.lat / ? AS INT) AS gy, CAST(p.lon / ? AS INT) AS gx
+        SELECT p.kind, COUNT(*) AS n,
+               AVG(p.lat) AS alat, AVG(p.lon) AS alon,
+               MIN(p.lat) AS min_lat, MAX(p.lat) AS max_lat,
+               MIN(p.lon) AS min_lon, MAX(p.lon) AS max_lon,
+               CAST(floor(p.lat / ? + 1e-9) AS INT) AS gy,
+               CAST(floor(p.lon / ? + 1e-9) AS INT) AS gx
         FROM places_box AS box
         JOIN places AS p ON p.id = box.id
         WHERE p.kind IN ({marks})
           AND box.min_lat <= ? AND box.max_lat >= ?
           AND box.min_lon <= ? AND box.max_lon >= ?
+          AND (
+            p.kind != 'parking'
+            OR {_CLUSTER_PARKING_NAME_SQL}
+          )
         GROUP BY gy, gx, p.kind
         """,
         (step, step, *COUNT_KINDS, north, south, east, west),
     ).fetchall()
     cells = {}
     raw = {}
-    for kind, count, lat, lon, gy, gx in rows:
-        cell = cells.setdefault((gy, gx), {"lat": 0.0, "lon": 0.0, "n": 0})
-        cell["lat"] += lat * count
-        cell["lon"] += lon * count
+    for kind, count, alat, alon, min_lat, max_lat, min_lon, max_lon, gy, gx in rows:
+        cell = cells.setdefault(
+            (gy, gx),
+            {
+                "n": 0,
+                "wlat": 0.0,
+                "wlon": 0.0,
+                "south": min_lat,
+                "north": max_lat,
+                "west": min_lon,
+                "east": max_lon,
+            },
+        )
         cell["n"] += count
+        cell["wlat"] += alat * count
+        cell["wlon"] += alon * count
+        cell["south"] = min(cell["south"], min_lat)
+        cell["north"] = max(cell["north"], max_lat)
+        cell["west"] = min(cell["west"], min_lon)
+        cell["east"] = max(cell["east"], max_lon)
         raw[kind] = raw.get(kind, 0) + count
     clusters = []
+    pad = max(step * 0.05, 0.01)
+    half = step * 0.9
     for cell in cells.values():
         total = cell["n"]
         if total <= 0:
             continue
+        lat = cell["wlat"] / total
+        lon = cell["wlon"] / total
+        south, west, north, east = _clamp_cluster_bbox(
+            lat,
+            lon,
+            cell["south"] - pad,
+            cell["west"] - pad,
+            cell["north"] + pad,
+            cell["east"] + pad,
+            half,
+        )
         clusters.append({
-            "lat": cell["lat"] / total,
-            "lon": cell["lon"] / total,
+            "lat": lat,
+            "lon": lon,
             "count": int(total),
+            "south": south,
+            "west": west,
+            "north": north,
+            "east": east,
         })
-    clusters.sort(key=lambda item: item["count"], reverse=True)
-    return clusters[:120], _public_counts(raw)
+    # Merge anything still closer than ~¾ of a cell (stops 105-on-16 overlaps).
+    clusters = _merge_nearby_clusters(clusters, step * 0.75)
+    return clusters[:48], _public_counts(raw)
 
 
 def _rows_in_box(conn, south, west, north, east, kinds):
@@ -542,6 +684,209 @@ def view_places(south, west, north, east, accept_language="", force_pins=False):
         "places": places,
         "clusters": [],
         "counts": counts,
+    }
+
+
+def _compact_explore_pin(row, kind, accept_language, near_trail=None, tags=None):
+    name_tags = json.loads(row["name_tags"] or "{}")
+    if tags is None:
+        tags = json.loads(row["tags"] or "{}")
+    name = pick_name(name_tags, accept_language) or None
+    pin = {
+        "osm_type": row["osm_type"],
+        "osm_id": str(row["osm_id"]),
+        "name": name,
+        "lat": row["lat"],
+        "lon": row["lon"],
+        "kind": kind,
+        "facts": _facts(tags),
+    }
+    if near_trail:
+        pin["near_trail"] = near_trail
+    if kind == "parking":
+        known = known_answers(tags)
+        if known:
+            pin["known"] = known
+    return pin
+
+
+def explore_places(south, west, north, east, accept_language=""):
+    """Return exact pin-eligible places in a region for client Supercluster.
+
+    Uses spatial hashing so a ~1.5°–3.5° region runs in ~10–90 ms with no
+    per-kind caps, keeping cluster counts 100% consistent across zoom levels.
+    Falls back to coarse regional clusters only at multi-state zoom (>4.2°).
+    """
+    if not available():
+        return None
+    if (north - south) > EXPLORE_MAX_SPAN or (east - west) > EXPLORE_MAX_SPAN:
+        with connect() as conn:
+            clusters, counts = _clusters_in_box(conn, south, west, north, east)
+        return {
+            "zoomed_out": True,
+            "places": [],
+            "clusters": clusters,
+            "counts": counts,
+            "box": [south, west, north, east],
+        }
+
+    center_lat = (south + north) / 2
+    cos_lat = max(math.cos(math.radians(center_lat)), 0.2)
+    pad_lat = 1.5 / 111
+    pad_lon = 1.5 / (111 * cos_lat)
+    non_parking_kinds = ("trailhead", *ACTIVITY_KINDS)
+
+    with connect() as conn:
+        non_parking_rows = _rows_in_box(
+            conn,
+            south - pad_lat,
+            west - pad_lon,
+            north + pad_lat,
+            east + pad_lon,
+            non_parking_kinds,
+        )
+        parking_rows = _rows_in_box(
+            conn,
+            south,
+            west,
+            north,
+            east,
+            ("parking",),
+        )
+
+    # Spatial grids (~550m for 0.45 km match; ~1.6 km for 1.5 km trailhead label).
+    near_cell_lat = 0.005
+    near_cell_lon = 0.005 / cos_lat
+    wide_cell_lat = 0.015
+    wide_cell_lon = 0.015 / cos_lat
+
+    anchor_grid = {}
+    th_wide_grid = {}
+    in_box_non_parking = []
+
+    for row in non_parking_rows:
+        lat = row["lat"]
+        lon = row["lon"]
+        kind = row["kind"]
+        name_tags = json.loads(row["name_tags"] or "{}")
+        picked_name = pick_name(name_tags, accept_language) or None
+        is_th = kind == "trailhead"
+        if is_th or picked_name:
+            gy = math.floor(lat / near_cell_lat)
+            gx = math.floor(lon / near_cell_lon)
+            anchor_grid.setdefault((gy, gx), []).append(
+                (lat, lon, is_th, picked_name)
+            )
+        if is_th and picked_name:
+            wgy = math.floor(lat / wide_cell_lat)
+            wgx = math.floor(lon / wide_cell_lon)
+            th_wide_grid.setdefault((wgy, wgx), []).append(
+                (lat, lon, picked_name)
+            )
+        if south <= lat <= north and west <= lon <= east:
+            in_box_non_parking.append((row, kind, picked_name))
+
+    places = []
+    named_lot_grid = {}
+
+    for row in parking_rows:
+        lat = row["lat"]
+        lon = row["lon"]
+        if not (south <= lat <= north and west <= lon <= east):
+            continue
+        raw_name = row["name"] or ""
+        raw_tags = row["tags"] or "{}"
+
+        near_any = False
+        near_trail = None
+        near_km = 0.45
+        gy = math.floor(lat / near_cell_lat)
+        gx = math.floor(lon / near_cell_lon)
+        for dy in (-1, 0, 1):
+            for dx in (-1, 0, 1):
+                for alat, alon, _is_th, aname in anchor_grid.get((gy + dy, gx + dx), ()):
+                    km = _kilometers(lat, lon, alat, alon)
+                    if km <= 0.45:
+                        near_any = True
+                        if aname and km < near_km:
+                            near_km = km
+                            near_trail = aname
+
+        # Fast skip when unnamed, far from anchors, and no operator/name_tags.
+        if (
+            not near_any
+            and not raw_name
+            and row["name_tags"] in ("", "{}")
+            and '"operator"' not in raw_tags
+        ):
+            continue
+
+        name_tags = json.loads(row["name_tags"] or "{}")
+        picked_name = pick_name(name_tags, accept_language) or raw_name or None
+        has_trail_name = bool(picked_name and TRAIL_LOT_RE.search(picked_name))
+        if not near_any and not has_trail_name and '"operator"' not in raw_tags:
+            continue
+
+        tags = json.loads(raw_tags)
+        if _excluded_parking(tags, picked_name):
+            continue
+        has_park_agency = bool(PARK_AGENCY_RE.search(tags.get("operator") or ""))
+        if not (near_any or has_trail_name or has_park_agency):
+            continue
+
+        if not near_trail and (has_trail_name or has_park_agency):
+            best_km = 1.5
+            wgy = math.floor(lat / wide_cell_lat)
+            wgx = math.floor(lon / wide_cell_lon)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    for tlat, tlon, tname in th_wide_grid.get((wgy + dy, wgx + dx), ()):
+                        km = _kilometers(lat, lon, tlat, tlon)
+                        if km < best_km:
+                            best_km = km
+                            near_trail = tname
+
+        pin = _compact_explore_pin(
+            row,
+            "parking",
+            accept_language,
+            near_trail=near_trail,
+            tags=tags,
+        )
+        places.append(pin)
+        if pin["name"]:
+            named_lot_grid.setdefault((gy, gx), []).append((lat, lon, pin["name"]))
+
+    for row, kind, picked_name in in_box_non_parking:
+        near_trail = None
+        if kind == "trailhead" and not picked_name:
+            lat = row["lat"]
+            lon = row["lon"]
+            best_km = 0.45
+            gy = math.floor(lat / near_cell_lat)
+            gx = math.floor(lon / near_cell_lon)
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    for llat, llon, lname in named_lot_grid.get((gy + dy, gx + dx), ()):
+                        km = _kilometers(lat, lon, llat, llon)
+                        if km < best_km:
+                            best_km = km
+                            near_trail = lname
+        places.append(
+            _compact_explore_pin(row, kind, accept_language, near_trail=near_trail)
+        )
+
+    raw_counts = {}
+    for pin in places:
+        k = pin["kind"]
+        raw_counts[k] = raw_counts.get(k, 0) + 1
+
+    return {
+        "zoomed_out": False,
+        "places": places,
+        "clusters": [],
+        "counts": _public_counts(raw_counts),
+        "box": [south, west, north, east],
     }
 
 

@@ -14,11 +14,12 @@ import {
   choiceToSheetProps,
   clustersToGeoJSON,
   defaultFilters,
-  fetchMapPlaces,
+  fetchExplorePlaces,
   fetchNearbyPlaces,
   filterIdForChoice,
   kindLabel,
   matchPlaceKey,
+  mergeClustersByScreen,
   parseCoordinates,
   placeFeatureKey,
   placesToGeoJSON,
@@ -28,14 +29,20 @@ import { markSvg, registerMarkImages } from "./marks.js";
 
 const SOURCE_ID = "basemap";
 const PLACES_SOURCE = "karwan-places";
-const CLUSTER_SOURCE = "karwan-clusters";
+const OVERVIEW_SOURCE = "karwan-overview-clusters";
 const PLACES_LAYER = "karwan-places-icons";
 const PLACES_FALLBACK = "karwan-places-fallback";
-const CLUSTER_LAYER = "karwan-clusters-circles";
-const CLUSTER_LABEL = "karwan-clusters-label";
+const SUPERCLUSTER_LAYER = "karwan-supercluster-circles";
+const SUPERCLUSTER_LABEL = "karwan-supercluster-label";
+const OVERVIEW_LAYER = "karwan-overview-circles";
+const OVERVIEW_LABEL = "karwan-overview-label";
+
 const DEFAULT_VIEW = { lng: -121.72, lat: 47.49, zoom: 9 };
 const SEARCH_ZOOM = 14;
 const MAP_MAX_ZOOM = 18;
+const CLUSTER_MAX_ZOOM = 12;
+const CLUSTER_RADIUS = 58;
+const EXPLORE_SPAN_LIMIT = 3.8;
 const SUGGEST_MS = 220;
 
 const statusEl = document.getElementById("map-status");
@@ -51,47 +58,75 @@ let suggestToken = 0;
 let pinLoadToken = 0;
 let placesReady = false;
 let filters = defaultFilters();
-let lastPlaces = [];
+let loadedPlaces = [];
+let loadedBox = null;
+let loadedVersion = 0;
+let lastSourceSig = "";
 let lastCounts = {};
-let clusterMode = false;
+let overviewMode = false;
 let selectedKey = null;
 let pendingSelectChoice = null;
 let searchAnchorKind = null;
 let countsReady = false;
 
-/** Keep pins inside the frame (avoid icons clipped on the map edge). */
-function pinInFrame(lat, lon, padPx = 36) {
-  if (!map || lat == null || lon == null) return false;
-  const el = map.getContainer();
-  const w = el?.clientWidth || 0;
-  const h = el?.clientHeight || 0;
-  if (w < padPx * 2 || h < padPx * 2) return true;
-  const pt = map.project([lon, lat]);
-  return (
-    pt.x >= padPx
-    && pt.x <= w - padPx
-    && pt.y >= padPx
-    && pt.y <= h - padPx
-  );
-}
-
-function placesInFrame(places) {
-  return (places || []).filter((pin) => pinInFrame(pin.lat, pin.lon));
-}
-
-/** Pill counts = pins actually drawn (same in-frame set), not the raw API box. */
-function countsFromPlaces(places) {
+function countsInBounds(places, bounds) {
   const counts = {};
+  if (!bounds) return counts;
+  const south = bounds.getSouth();
+  const west = bounds.getWest();
+  const north = bounds.getNorth();
+  const east = bounds.getEast();
   for (const pin of places || []) {
-    const kind = pin.kind;
-    if (!kind) continue;
-    counts[kind] = (counts[kind] || 0) + 1;
+    if (pin.lat == null || pin.lon == null || !pin.kind) continue;
+    if (pin.lat < south || pin.lat > north || pin.lon < west || pin.lon > east) {
+      continue;
+    }
+    counts[pin.kind] = (counts[pin.kind] || 0) + 1;
   }
   return counts;
 }
 
-function geoPlaces(places = lastPlaces) {
-  return placesToGeoJSON(placesInFrame(places), filters, selectedKey);
+function boxCoversBounds(box, bounds) {
+  if (!box || !bounds) return false;
+  const south = bounds.getSouth();
+  const west = bounds.getWest();
+  const north = bounds.getNorth();
+  const east = bounds.getEast();
+  const marginLat = (north - south) * 0.12;
+  const marginLon = (east - west) * 0.12;
+  return (
+    south - marginLat >= box.south
+    && north + marginLat <= box.north
+    && west - marginLon >= box.west
+    && east + marginLon <= box.east
+  );
+}
+
+function buildBufferedBox(bounds) {
+  const south = bounds.getSouth();
+  const west = bounds.getWest();
+  const north = bounds.getNorth();
+  const east = bounds.getEast();
+  const latSpan = north - south;
+  const lonSpan = east - west;
+  if (latSpan > EXPLORE_SPAN_LIMIT || lonSpan > EXPLORE_SPAN_LIMIT) {
+    return { south, west, north, east, wide: true };
+  }
+  const padLat = Math.min(
+    Math.max(latSpan * 0.45, 0.08),
+    Math.max((EXPLORE_SPAN_LIMIT - latSpan) / 2, 0),
+  );
+  const padLon = Math.min(
+    Math.max(lonSpan * 0.45, 0.1),
+    Math.max((EXPLORE_SPAN_LIMIT - lonSpan) / 2, 0),
+  );
+  return {
+    south: south - padLat,
+    west: west - padLon,
+    north: north + padLat,
+    east: east + padLon,
+    wide: false,
+  };
 }
 
 function setStatus(text, isError = false) {
@@ -167,10 +202,10 @@ function resizeMap() {
 
 function sheetPadding() {
   if (!sheetEl || sheetEl.hidden) {
-    return { top: 80, bottom: 40, left: 40, right: 40 };
+    return { top: 60, bottom: 52, left: 48, right: 48 };
   }
-  const h = sheetEl.getBoundingClientRect().height || 160;
-  return { top: 100, bottom: Math.round(h + 24), left: 40, right: 40 };
+  const h = sheetEl.getBoundingClientRect().height || 120;
+  return { top: 64, bottom: Math.round(h + 32), left: 48, right: 48 };
 }
 
 function flyToPoint(lon, lat, zoom) {
@@ -224,8 +259,7 @@ function frameSearchArea(choice, nearPlaces) {
     padding: sheetPadding(),
     maxZoom: SEARCH_ZOOM,
   });
-  // fitBounds padding can leave the view too wide → clusters. Stay on the hit.
-  if (!cam || cam.zoom == null || cam.zoom < 12.5) {
+  if (!cam || cam.zoom == null || cam.zoom < CLUSTER_MAX_ZOOM + 1) {
     flyToPoint(choice.lon, choice.lat, SEARCH_ZOOM);
     return;
   }
@@ -304,9 +338,7 @@ function hideSheet() {
   selectedKey = null;
   pendingSelectChoice = null;
   searchAnchorKind = null;
-  if (placesReady && !clusterMode) {
-    map?.getSource(PLACES_SOURCE)?.setData(geoPlaces());
-  }
+  syncPlacesSourceData();
   resizeMap();
 }
 
@@ -330,7 +362,6 @@ function showSheet(props) {
   h.className = "place-sheet-title";
   h.textContent = title;
   const bits = [];
-  // Don't repeat “Lots / Lots” when the title is already the kind label.
   if (title !== label) bits.push(label);
   if (props.fee) bits.push(`Fee: ${props.fee}`);
   if (props.toilets === "1" || props.toilets === "true" || props.toilets === "yes") {
@@ -360,14 +391,6 @@ function applyFiltersForSearch(choice) {
   if (id && id !== "parking" && id !== "trailhead") {
     filters[id] = true;
   }
-  if (choice.kind === "pin" && choice.pin?.kind === "parking") {
-    filters.parking = true;
-  }
-  if (choice.kind === "pin" && choice.pin?.kind === "trailhead") {
-    filters.trailhead = true;
-    filters.parking = true;
-  }
-  // Always keep lots + trailheads for “where do I park?”
   filters.parking = true;
   filters.trailhead = true;
   syncFilterPills();
@@ -383,60 +406,52 @@ function pillLabel(id, label) {
   return count > 0 ? `${label} ${count}` : label;
 }
 
-/** Drop selected kinds with nothing in view (no “Trailhead 0”). */
-function pruneEmptyFilters() {
-  if (!countsReady) return;
-  for (const [id] of FILTERS) {
-    if (id === searchAnchorKind) continue;
-    if (filters[id] && countFor(id) === 0) filters[id] = false;
-  }
-  if (searchAnchorKind) filters[searchAnchorKind] = true;
-  if (FILTERS.some(([id]) => filters[id])) return;
-  if (countFor("parking") > 0) {
+function isPillVisuallyOn(id) {
+  if (!filters[id]) return false;
+  if (!countsReady || overviewMode || id === searchAnchorKind) return true;
+  return countFor(id) > 0;
+}
+
+/** Ensure at least one visible category is active when the view has places. */
+function ensureNonEmptyFilter() {
+  if (!FILTERS.some(([id]) => filters[id])) {
     filters.parking = true;
-    return;
+    filters.trailhead = true;
+  }
+  if (!countsReady || overviewMode) return false;
+  if (FILTERS.some(([id]) => filters[id] && (countFor(id) > 0 || id === searchAnchorKind))) {
+    return false;
   }
   for (const [id] of FILTERS) {
     if (countFor(id) > 0) {
       filters[id] = true;
-      return;
+      return true;
     }
   }
-}
-
-function ensureDefaultFilters() {
-  if (FILTERS.some(([id]) => filters[id])) return;
-  if (countsReady) {
-    pruneEmptyFilters();
-    return;
-  }
-  filters.parking = true;
-  filters.trailhead = true;
+  return false;
 }
 
 function updatePillButton(btn, id, label) {
-  const on = Boolean(filters[id]);
+  const on = isPillVisuallyOn(id);
   btn.classList.toggle("is-on", on);
   btn.setAttribute("aria-pressed", on ? "true" : "false");
   const color = KIND_COLOR[id] || "#5e6b65";
   btn.style.setProperty("--pill-accent", color);
   const text = btn.querySelector(".filter-pill-text");
   if (text) text.textContent = pillLabel(id, label);
-  btn.classList.toggle("is-empty", countFor(id) === 0);
+  btn.classList.toggle("is-empty", countsReady && countFor(id) === 0);
 }
 
 function syncFilterPills() {
-  if (!filtersEl) return;
-  pruneEmptyFilters();
-  ensureDefaultFilters();
+  if (!filtersEl) return false;
+  const changed = ensureNonEmptyFilter();
 
-  // Update in place when possible (avoids wiping selection chrome on every pan).
   if (filtersEl.childElementCount === FILTERS.length) {
     for (const [id, label] of FILTERS) {
       const btn = filtersEl.querySelector(`[data-kind="${id}"]`);
       if (btn) updatePillButton(btn, id, label);
     }
-    return;
+    return changed;
   }
 
   filtersEl.replaceChildren();
@@ -457,55 +472,55 @@ function syncFilterPills() {
     });
     filtersEl.append(btn);
   }
+  return changed;
 }
 
-/** Zoom in until the API returns pins (not clusters) so filters can show icons. */
-async function zoomInForPins() {
-  if (!map) return;
-  for (let i = 0; i < 8; i += 1) {
-    if (!clusterMode) return;
-    const next = Math.min((map.getZoom() || 0) + 1.25, MAP_MAX_ZOOM);
-    if (next <= (map.getZoom() || 0) + 0.01) return;
-    await new Promise((resolve) => {
-      map.once("moveend", () => resolve());
-      map.easeTo({ zoom: next, duration: 220, essential: true });
-    });
-    await refreshPins();
+function sourceSignature() {
+  if (overviewMode) return "overview";
+  const active = FILTERS.filter(([id]) => filters[id]).map(([id]) => id).join(",");
+  return `${loadedVersion}|${active}|${selectedKey || ""}`;
+}
+
+/**
+ * Push GeoJSON into MapLibre's Supercluster source ONLY when the point set,
+ * active filters, or selected pin changed — never during zoom/pan inside
+ * loadedBox. That keeps cluster drill-down counts 100% conserved.
+ */
+function syncPlacesSourceData(force = false) {
+  if (!map || !placesReady) return;
+  const src = map.getSource(PLACES_SOURCE);
+  if (!src) return;
+  const sig = sourceSignature();
+  if (!force && sig === lastSourceSig) return;
+  lastSourceSig = sig;
+  if (overviewMode) {
+    src.setData({ type: "FeatureCollection", features: [] });
+    return;
   }
+  src.setData(placesToGeoJSON(loadedPlaces, filters, selectedKey));
 }
 
 async function onFilterPillClick(id) {
-  // Don't select a kind that has nothing in the current view.
-  if (!filters[id] && countsReady && countFor(id) === 0 && !clusterMode) {
+  const wasOn = isPillVisuallyOn(id);
+  if (!wasOn && countsReady && !overviewMode && countFor(id) === 0) {
     return;
   }
-  filters[id] = !filters[id];
-  if (!FILTERS.some(([kind]) => filters[kind])) {
-    if (countFor("parking") > 0 || !countsReady) filters.parking = true;
-    else pruneEmptyFilters();
+  filters[id] = !wasOn;
+  if (!FILTERS.some(([kind]) => filters[kind] && (overviewMode || !countsReady || countFor(kind) > 0))) {
+    if (countFor("parking") > 0 || !countsReady || overviewMode) {
+      filters.parking = true;
+    } else {
+      ensureNonEmptyFilter();
+    }
   }
   syncFilterPills();
-  if (clusterMode) {
-    await zoomInForPins();
+  syncPlacesSourceData(true);
+  if (overviewMode && map) {
+    map.easeTo({
+      zoom: Math.max((map.getZoom() || 5) + 2, 8),
+      essential: true,
+    });
   }
-  renderPlaces();
-}
-
-function renderPlaces() {
-  if (!map || !placesReady) return;
-  if (clusterMode) {
-    map.getSource(PLACES_SOURCE).setData(geoPlaces([]));
-    clearStatus();
-    return;
-  }
-  const visible = placesInFrame(lastPlaces);
-  lastCounts = countsFromPlaces(visible);
-  countsReady = true;
-  syncFilterPills();
-  map.getSource(PLACES_SOURCE).setData(
-    placesToGeoJSON(visible, filters, selectedKey),
-  );
-  clearStatus();
 }
 
 function selectPlaceFeature(feature) {
@@ -525,19 +540,81 @@ function selectPlaceFeature(feature) {
     fee: props.fee || "",
     toilets: props.toilets || "",
   });
-  renderPlaces();
+  syncPlacesSourceData();
   flyToPoint(lon, lat, Math.max(map.getZoom(), 14));
 }
 
-function setClusterData(clusters) {
-  if (!map?.getSource(CLUSTER_SOURCE)) return;
-  const inset = (clusters || []).filter((cell) => pinInFrame(cell.lat, cell.lon, 40));
-  map.getSource(CLUSTER_SOURCE).setData(clustersToGeoJSON(inset));
+function setOverviewClusters(clusters) {
+  if (!map?.getSource(OVERVIEW_SOURCE)) return;
+  const merged = mergeClustersByScreen(
+    clusters || [],
+    (lngLat) => map.project(lngLat),
+    56,
+  );
+  map.getSource(OVERVIEW_SOURCE).setData(clustersToGeoJSON(merged));
 }
 
-function clearClusters() {
-  setClusterData([]);
-  clusterMode = false;
+function boundsFromFeatures(features) {
+  let bounds = null;
+  for (const feat of features || []) {
+    const coords = feat?.geometry?.coordinates;
+    if (!Array.isArray(coords) || coords.length < 2) continue;
+    if (!bounds) {
+      bounds = new maplibregl.LngLatBounds(coords, coords);
+    } else {
+      bounds.extend(coords);
+    }
+  }
+  return bounds;
+}
+
+async function onSuperclusterClick(feature) {
+  if (!map || !feature) return;
+  const props = feature.properties || {};
+  const clusterId = Number(props.cluster_id);
+  const pointCount = Number(props.point_count) || 2;
+  const [lon, lat] = feature.geometry.coordinates;
+  const source = map.getSource(PLACES_SOURCE);
+  if (!source || !Number.isFinite(clusterId)) return;
+
+  try {
+    const [expansionZoom, children, leaves] = await Promise.all([
+      source.getClusterExpansionZoom(clusterId),
+      source.getClusterChildren(clusterId),
+      source.getClusterLeaves(clusterId, Math.min(pointCount, 500), 0),
+    ]);
+    const minSplitZoom = Math.min(expansionZoom + 0.12, MAP_MAX_ZOOM);
+    const pad = sheetPadding();
+    const leafBounds = boundsFromFeatures(leaves);
+    const childBounds = boundsFromFeatures(children);
+
+    if (leafBounds) {
+      const leafCam = map.cameraForBounds(leafBounds, {
+        padding: pad,
+        maxZoom: 15.5,
+      });
+      if (leafCam && leafCam.zoom != null && leafCam.zoom >= minSplitZoom) {
+        map.easeTo({
+          center: leafCam.center,
+          zoom: Math.min(leafCam.zoom, MAP_MAX_ZOOM),
+          bearing: leafCam.bearing ?? 0,
+          padding: pad,
+          essential: true,
+        });
+        return;
+      }
+    }
+
+    const center = childBounds ? childBounds.getCenter() : [lon, lat];
+    map.easeTo({
+      center,
+      zoom: minSplitZoom,
+      padding: pad,
+      essential: true,
+    });
+  } catch {
+    flyToPoint(lon, lat, Math.min((map.getZoom() || 9) + 1.5, MAP_MAX_ZOOM));
+  }
 }
 
 function ensurePlacesLayer() {
@@ -545,9 +622,12 @@ function ensurePlacesLayer() {
 
   map.addSource(PLACES_SOURCE, {
     type: "geojson",
-    data: geoPlaces([]),
+    data: { type: "FeatureCollection", features: [] },
+    cluster: true,
+    clusterMaxZoom: CLUSTER_MAX_ZOOM,
+    clusterRadius: CLUSTER_RADIUS,
   });
-  map.addSource(CLUSTER_SOURCE, {
+  map.addSource(OVERVIEW_SOURCE, {
     type: "geojson",
     data: clustersToGeoJSON([]),
   });
@@ -558,11 +638,12 @@ function ensurePlacesLayer() {
   }
   colorExpr.push("#5e6b65");
 
-  // Fallback dots if an icon image is missing (always under icons).
+  // Unclustered fallback dots (under icons).
   map.addLayer({
     id: PLACES_FALLBACK,
     type: "circle",
     source: PLACES_SOURCE,
+    filter: ["!", ["has", "point_count"]],
     paint: {
       "circle-radius": 8,
       "circle-color": [
@@ -576,11 +657,12 @@ function ensurePlacesLayer() {
     },
   });
 
-  // Selected pin uses survey terracotta mark (same size), not a bigger halo.
+  // Unclustered pins (survey terracotta when selected).
   map.addLayer({
     id: PLACES_LAYER,
     type: "symbol",
     source: PLACES_SOURCE,
+    filter: ["!", ["has", "point_count"]],
     layout: {
       "icon-image": [
         "case",
@@ -595,31 +677,73 @@ function ensurePlacesLayer() {
     },
   });
 
+  // Native Supercluster bubbles (z7..z12).
   map.addLayer({
-    id: CLUSTER_LAYER,
+    id: SUPERCLUSTER_LAYER,
     type: "circle",
-    source: CLUSTER_SOURCE,
+    source: PLACES_SOURCE,
+    filter: ["has", "point_count"],
     paint: {
       "circle-radius": [
-        "interpolate", ["linear"], ["get", "count"],
-        1, 14,
-        50, 22,
-        200, 30,
+        "interpolate",
+        ["linear"],
+        ["get", "point_count"],
+        2, 16,
+        20, 20,
+        80, 24,
+        300, 28,
       ],
       "circle-color": "#17211c",
-      "circle-opacity": 0.85,
+      "circle-opacity": 0.9,
       "circle-stroke-width": 2,
       "circle-stroke-color": "#ffffff",
     },
   });
   map.addLayer({
-    id: CLUSTER_LABEL,
+    id: SUPERCLUSTER_LABEL,
     type: "symbol",
-    source: CLUSTER_SOURCE,
+    source: PLACES_SOURCE,
+    filter: ["has", "point_count"],
+    layout: {
+      "text-field": ["get", "point_count_abbreviated"],
+      "text-size": 12,
+      "text-font": ["Noto Sans Regular"],
+      "text-allow-overlap": true,
+    },
+    paint: {
+      "text-color": "#ffffff",
+    },
+  });
+
+  // Multi-state overview bubbles (only when zoomed out past ~4° span).
+  map.addLayer({
+    id: OVERVIEW_LAYER,
+    type: "circle",
+    source: OVERVIEW_SOURCE,
+    paint: {
+      "circle-radius": [
+        "interpolate",
+        ["linear"],
+        ["get", "count"],
+        1, 16,
+        50, 22,
+        300, 28,
+      ],
+      "circle-color": "#17211c",
+      "circle-opacity": 0.9,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#ffffff",
+    },
+  });
+  map.addLayer({
+    id: OVERVIEW_LABEL,
+    type: "symbol",
+    source: OVERVIEW_SOURCE,
     layout: {
       "text-field": ["to-string", ["get", "count"]],
       "text-size": 12,
       "text-font": ["Noto Sans Regular"],
+      "text-allow-overlap": true,
     },
     paint: {
       "text-color": "#ffffff",
@@ -627,7 +751,14 @@ function ensurePlacesLayer() {
   });
 
   placesReady = true;
-  for (const id of [PLACES_FALLBACK, PLACES_LAYER, CLUSTER_LAYER, CLUSTER_LABEL]) {
+  for (const id of [
+    PLACES_FALLBACK,
+    PLACES_LAYER,
+    SUPERCLUSTER_LAYER,
+    SUPERCLUSTER_LABEL,
+    OVERVIEW_LAYER,
+    OVERVIEW_LABEL,
+  ]) {
     if (map.getLayer(id)) map.moveLayer(id);
   }
 
@@ -643,34 +774,78 @@ function ensurePlacesLayer() {
     });
   }
 
-  map.on("mouseenter", CLUSTER_LAYER, () => {
+  map.on("mouseenter", SUPERCLUSTER_LAYER, () => {
     map.getCanvas().style.cursor = "pointer";
   });
-  map.on("mouseleave", CLUSTER_LAYER, () => {
+  map.on("mouseleave", SUPERCLUSTER_LAYER, () => {
     map.getCanvas().style.cursor = "";
   });
-  map.on("click", CLUSTER_LAYER, (event) => {
+  map.on("click", SUPERCLUSTER_LAYER, (event) => {
+    void onSuperclusterClick(event.features?.[0]);
+  });
+
+  map.on("mouseenter", OVERVIEW_LAYER, () => {
+    map.getCanvas().style.cursor = "pointer";
+  });
+  map.on("mouseleave", OVERVIEW_LAYER, () => {
+    map.getCanvas().style.cursor = "";
+  });
+  map.on("click", OVERVIEW_LAYER, (event) => {
     const feature = event.features?.[0];
     if (!feature) return;
     const [lon, lat] = feature.geometry.coordinates;
-    const nextZoom = Math.min((map.getZoom() || 5) + 2, MAP_MAX_ZOOM);
-    flyToPoint(lon, lat, nextZoom);
+    map.easeTo({
+      center: [lon, lat],
+      zoom: Math.max((map.getZoom() || 5) + 2, 8),
+      padding: sheetPadding(),
+      essential: true,
+    });
   });
+}
+
+function updateViewportCountsAndRender() {
+  if (!map || !placesReady) return;
+  lastCounts = countsInBounds(loadedPlaces, map.getBounds());
+  countsReady = true;
+  const filterAutoChanged = syncFilterPills();
+  syncPlacesSourceData(filterAutoChanged);
+  clearStatus();
 }
 
 async function refreshPins() {
   if (!map || !placesReady) return;
+  const bounds = map.getBounds();
+
+  // Reuse loadedPlaces when zooming/panning inside the buffered region!
+  // This keeps Supercluster's KD-tree intact so cluster drill-down counts
+  // never jump (no 172 -> 226 or 26 -> 25).
+  if (!overviewMode && loadedBox && boxCoversBounds(loadedBox, bounds)) {
+    if (pendingSelectChoice) {
+      loadedPlaces = withSearchAnchorPin(pendingSelectChoice, loadedPlaces);
+      loadedVersion += 1;
+      selectedKey = matchPlaceKey(pendingSelectChoice, loadedPlaces) || selectedKey;
+      pendingSelectChoice = null;
+    }
+    updateViewportCountsAndRender();
+    return;
+  }
+
+  const reqBox = buildBufferedBox(bounds);
   const token = ++pinLoadToken;
   try {
-    const payload = await fetchMapPlaces(map.getBounds());
+    const payload = await fetchExplorePlaces(reqBox);
     if (token !== pinLoadToken) return;
+
     if (payload.unavailable) {
-      clearClusters();
-      lastPlaces = [];
+      overviewMode = false;
+      loadedBox = null;
+      loadedPlaces = [];
+      loadedVersion += 1;
       lastCounts = {};
       countsReady = true;
+      setOverviewClusters([]);
       syncFilterPills();
-      map.getSource(PLACES_SOURCE).setData(geoPlaces([]));
+      syncPlacesSourceData(true);
       setStatus("Places unavailable here (need outdoors.db locally, or catalog later)");
       return;
     }
@@ -678,25 +853,36 @@ async function refreshPins() {
     const clusters = payload.clusters || [];
     const places = payload.places || [];
     if (payload.zoomed_out || (clusters.length > 0 && places.length === 0)) {
-      clusterMode = true;
-      lastPlaces = [];
+      overviewMode = true;
+      loadedBox = null;
+      loadedPlaces = [];
+      loadedVersion += 1;
       lastCounts = payload.counts || {};
       countsReady = true;
       syncFilterPills();
-      map.getSource(PLACES_SOURCE).setData(geoPlaces([]));
-      setClusterData(clusters);
+      syncPlacesSourceData(true);
+      setOverviewClusters(clusters);
       clearStatus();
       return;
     }
 
-    clearClusters();
-    lastPlaces = places;
+    overviewMode = false;
+    setOverviewClusters([]);
+    const [bs, bw, bn, be] = payload.box || [
+      reqBox.south,
+      reqBox.west,
+      reqBox.north,
+      reqBox.east,
+    ];
+    loadedBox = { south: bs, west: bw, north: bn, east: be };
+    loadedPlaces = places;
     if (pendingSelectChoice) {
-      selectedKey = matchPlaceKey(pendingSelectChoice, places) || selectedKey;
+      loadedPlaces = withSearchAnchorPin(pendingSelectChoice, loadedPlaces);
+      selectedKey = matchPlaceKey(pendingSelectChoice, loadedPlaces) || selectedKey;
       pendingSelectChoice = null;
     }
-    // renderPlaces recounts from in-frame pins (fixes Bike 4 vs 3 icons).
-    renderPlaces();
+    loadedVersion += 1;
+    updateViewportCountsAndRender();
   } catch (err) {
     if (token !== pinLoadToken) return;
     setStatus(err.message || "Could not load places", true);
@@ -705,12 +891,21 @@ async function refreshPins() {
 
 async function settleSearchPins(choice) {
   await refreshPins();
-  // Typeahead must land on pins + highlight, never a cluster overview.
-  if (clusterMode) await zoomInForPins();
-  lastPlaces = withSearchAnchorPin(choice, lastPlaces);
-  selectedKey = matchPlaceKey(choice, lastPlaces) || selectedKey;
+  if (overviewMode && map) {
+    await new Promise((resolve) => {
+      map.once("moveend", () => resolve());
+      flyToPoint(choice.lon, choice.lat, SEARCH_ZOOM);
+    });
+    await refreshPins();
+  }
+  const next = withSearchAnchorPin(choice, loadedPlaces);
+  if (next.length !== loadedPlaces.length) {
+    loadedPlaces = next;
+    loadedVersion += 1;
+  }
+  selectedKey = matchPlaceKey(choice, loadedPlaces) || selectedKey;
   pendingSelectChoice = null;
-  renderPlaces();
+  updateViewportCountsAndRender();
 }
 
 async function selectChoice(choice) {
@@ -725,6 +920,7 @@ async function selectChoice(choice) {
     ? placeFeatureKey(choice.pin)
     : placeFeatureKey({ lat: choice.lat, lon: choice.lon });
   showSheet(choiceToSheetProps(choice));
+  syncPlacesSourceData();
 
   const afterMove = () => {
     map.once("moveend", () => {
@@ -732,14 +928,12 @@ async function selectChoice(choice) {
     });
   };
 
-  // Direct pin (lot/trailhead): zoom tight.
   if (choice.kind === "pin") {
     afterMove();
     flyToPoint(choice.lon, choice.lat, 16);
     return;
   }
 
-  // Peak / trail / activity: go to the hit first; nearby lots only if they fit.
   try {
     const payload = await fetchNearbyPlaces(choice.lat, choice.lon);
     const near = payload.places || [];
@@ -840,7 +1034,6 @@ async function start() {
       style: buildStyle(manifest),
       center: [DEFAULT_VIEW.lng, DEFAULT_VIEW.lat],
       zoom: DEFAULT_VIEW.zoom,
-      // Basemap tiles stop earlier; allow overzoom so pins stay usable up close.
       maxZoom: MAP_MAX_ZOOM,
       attributionControl: { compact: true },
     });

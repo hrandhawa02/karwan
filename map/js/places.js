@@ -93,14 +93,14 @@ export async function searchPlaces(q, lat, lon) {
   return data.choices || [];
 }
 
-export async function fetchMapPlaces(bounds) {
+export async function fetchExplorePlaces(box) {
   const params = new URLSearchParams({
-    south: String(bounds.getSouth()),
-    west: String(bounds.getWest()),
-    north: String(bounds.getNorth()),
-    east: String(bounds.getEast()),
+    south: String(box.south),
+    west: String(box.west),
+    north: String(box.north),
+    east: String(box.east),
   });
-  const res = await fetch(`/api/v1/map?${params}`);
+  const res = await fetch(`/api/v1/map/explore?${params}`);
   if (!res.ok) throw new Error(`Map HTTP ${res.status}`);
   return res.json();
 }
@@ -199,18 +199,80 @@ export function matchPlaceKey(choice, places) {
   });
 }
 
+/**
+ * Merge clusters that sit on top of each other in screen space
+ * (backs up server grid so large bubbles don’t cover neighbors).
+ */
+export function mergeClustersByScreen(clusters, project, minPx = 52) {
+  if (!project || !clusters?.length) return clusters || [];
+  const ordered = [...clusters]
+    .filter((c) => c.lat != null && c.lon != null)
+    .map((c) => ({
+      lat: c.lat,
+      lon: c.lon,
+      count: Number(c.count) || 0,
+      south: c.south,
+      west: c.west,
+      north: c.north,
+      east: c.east,
+      pt: project([c.lon, c.lat]),
+    }))
+    .sort((a, b) => b.count - a.count);
+  const kept = [];
+  for (const cell of ordered) {
+    let absorbed = false;
+    for (const other of kept) {
+      const dx = cell.pt.x - other.pt.x;
+      const dy = cell.pt.y - other.pt.y;
+      if (Math.hypot(dx, dy) < minPx) {
+        other.count += cell.count;
+        if (cell.south != null) {
+          other.south = Math.min(other.south ?? cell.south, cell.south);
+          other.west = Math.min(other.west ?? cell.west, cell.west);
+          other.north = Math.max(other.north ?? cell.north, cell.north);
+          other.east = Math.max(other.east ?? cell.east, cell.east);
+        }
+        absorbed = true;
+        break;
+      }
+    }
+    if (!absorbed) kept.push(cell);
+  }
+  return kept.map(({ lat, lon, count, south, west, north, east }) => ({
+    lat,
+    lon,
+    count,
+    south,
+    west,
+    north,
+    east,
+  }));
+}
+
 export function clustersToGeoJSON(clusters) {
   const features = [];
   for (const cell of clusters || []) {
     if (cell.lat == null || cell.lon == null) continue;
+    const props = {
+      role: "cluster",
+      count: Number(cell.count) || 0,
+      name: String(cell.count || ""),
+    };
+    if (
+      cell.south != null
+      && cell.west != null
+      && cell.north != null
+      && cell.east != null
+    ) {
+      props.south = Number(cell.south);
+      props.west = Number(cell.west);
+      props.north = Number(cell.north);
+      props.east = Number(cell.east);
+    }
     features.push({
       type: "Feature",
       geometry: { type: "Point", coordinates: [cell.lon, cell.lat] },
-      properties: {
-        role: "cluster",
-        count: Number(cell.count) || 0,
-        name: String(cell.count || ""),
-      },
+      properties: props,
     });
   }
   return { type: "FeatureCollection", features };

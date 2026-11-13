@@ -14,6 +14,7 @@ from survey.backend.database import connect
 from survey.backend.form_gate import form_is_open
 from survey.backend.osm import (
     MapLookupFailed,
+    explore_view,
     map_view,
     places_near,
     search_map,
@@ -293,6 +294,17 @@ def _accept_language(request: Request):
 def map_places(south: float, west: float, north: float, east: float, request: Request):
     try:
         return map_view(south, west, north, east, _accept_language(request))
+    except MapLookupFailed:
+        raise HTTPException(
+            status_code=503,
+            detail="Places could not be loaded.",
+        )
+
+
+@app.get(f"{API_V1}/map/explore")
+def map_explore(south: float, west: float, north: float, east: float, request: Request):
+    try:
+        return explore_view(south, west, north, east, _accept_language(request))
     except MapLookupFailed:
         raise HTTPException(
             status_code=503,
